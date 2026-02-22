@@ -253,49 +253,111 @@ header {
     box-shadow: 0 0 20px rgba(20, 184, 166, 0.2);
 }
 
-/* Disclaimer Section */
+/* Disclaimer Section - Premium Redesign */
 .disclaimer {
-    padding: 4rem 1rem;
+    padding: 6rem 1rem;
+    background: linear-gradient(to bottom, transparent, rgba(168, 85, 247, 0.05), transparent);
     margin-top: 4rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.disclaimer-content {
-    max-width: 800px;
+.disclaimer-container {
+    max-width: 1000px;
     margin: 0 auto;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 20px;
-    padding: 2.5rem;
-    backdrop-filter: blur(10px);
+    text-align: center;
 }
 
-.disclaimer-content h3 {
-    font-size: 1.4rem;
-    margin-bottom: 1.5rem;
-    color: var(--primary-glow);
+.disclaimer-header {
+    margin-bottom: 3.5rem;
 }
 
-.disclaimer-content p {
-    color: #ccc;
-    line-height: 1.8;
+.disclaimer-header .icon {
+    font-size: 2.5rem;
+    display: block;
     margin-bottom: 1rem;
 }
 
-.disclaimer-content ul {
-    margin: 1.5rem 0;
-    padding-left: 1.5rem;
-    color: #bbb;
+.disclaimer-header h2 {
+    font-size: 2rem;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
 }
 
-.disclaimer-content li {
-    margin-bottom: 0.8rem;
+.disclaimer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+    margin-bottom: 4rem;
+}
+
+.disclaimer-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 2.5rem 2rem;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    backdrop-filter: blur(20px);
+}
+
+.disclaimer-card:hover {
+    transform: translateY(-10px);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(168, 85, 247, 0.3);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(168, 85, 247, 0.1);
+}
+
+.card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.card-text h4 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: #fff;
+    font-weight: 700;
+}
+
+.card-text p {
+    font-size: 0.95rem;
+    color: #a0a0b0;
     line-height: 1.6;
 }
 
+.disclaimer-footer {
+    display: inline-block;
+    padding: 1.5rem 3rem;
+    background: rgba(20, 184, 166, 0.05);
+    border: 1px solid rgba(20, 184, 166, 0.1);
+    border-radius: 50px;
+    transition: all 0.3s ease;
+}
+
+.disclaimer-footer:hover {
+    background: rgba(20, 184, 166, 0.1);
+    border-color: rgba(20, 184, 166, 0.3);
+}
+
 .future-note {
-    margin-top: 2rem;
-    font-size: 0.9rem;
-    color: var(--secondary-glow) !important;
-    font-weight: 500;
+    margin: 0;
+    font-size: 1rem;
+    color: #fff !important;
+}
+
+.future-note strong {
+    color: var(--secondary);
+}
+
+@media (max-width: 768px) {
+    .disclaimer-header h2 {
+        font-size: 1.6rem;
+    }
+
+    .disclaimer-grid {
+        grid-template-columns: 1fr;
+    }
 }
