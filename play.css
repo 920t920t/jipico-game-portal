@@ -21,7 +21,8 @@
     position: relative;
     /* 子要素のabsoluteの基準点 */
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(168, 85, 247, 0.2);
-    margin-bottom: 3rem;
+    /* プレイ中にギャラリー等が目に入らないよう大きな余白を設定 */
+    margin-bottom: 70vh;
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
