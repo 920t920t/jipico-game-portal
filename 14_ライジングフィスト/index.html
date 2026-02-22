@@ -1,0 +1,4308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RISING FIST</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:
+    radial-gradient(120% 90% at 50% 10%, #1d2a4a 0%, #090d1a 58%, #030407 100%);
+  display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden
+}
+canvas{
+  image-rendering:auto;max-width:100vw;max-height:100vh;object-fit:contain;
+  border:2px solid #1d2432;
+  box-shadow:
+    0 0 0 2px #0a0d14,
+    0 18px 50px rgba(0,0,0,.65),
+    0 0 24px rgba(90,140,255,.16);
+  background:#000;
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+'use strict';
+
+/* ===== SECTION 1: CONFIG & DATA ===== */
+
+const GAME = { DEBUG: false, SHOW_HITBOXES: false };
+
+const CFG = {
+  INTERNAL_W: 240,
+  INTERNAL_H: 135,
+  DISPLAY_W: 960,
+  DISPLAY_H: 540,
+  RENDER_SCALE: 4, // FIX #21
+  SCALE: 4,
+  FPS: 60,
+  FRAME_TIME: 1000 / 60,
+  STAGE_W: 300,
+  GROUND_Y: 100,
+  GRAVITY: 0.8,
+  MAX_PARTICLES: 100,
+  INPUT_BUFFER: 15,
+  COMMAND_MISS_TOLERANCE: 1,
+  MASH_WINDOW: 20,
+  MASH_THRESHOLD: 3,
+  HIT_CONFIRM_WINDOW: 18,
+  CHARGE_FRAMES: 45,
+  CHARGE_HOLD: 8,
+  ROUND_TIME: 99,
+  ROUNDS_TO_WIN: 2,
+  MAX_HP: 1000,
+  THROW_RANGE: 15,
+  THROW_ESCAPE: 6,
+  WAKEUP_TIME: 30,
+  WAKEUP_INVINCIBLE: 8,
+  COMBO_SCALING: [1.0, 0.9, 0.8, 0.7],
+  CHIP_SPECIAL: 0.10,
+  CHIP_NORMAL: 0,
+  PROJ_MAX_LIFE: 120,
+  PROJ_SIZE: 9, // FIX #27
+  CHAR_EDGE_PADDING: 22, // FIX #75
+  DASH_WINDOW: 6,
+  DASH_FRAMES: 20,
+  LANDING_FRAMES: 4,
+  VS_DURATION: 120,
+  KO_SLOWMO_FRAMES: 45,
+  ROUND_TEXT_FRAMES: 90,
+  FIGHT_TEXT_FRAMES: 30,
+  WIN_TEXT_FRAMES: 120,
+  PERFECT_TEXT_FRAMES: 60,
+  SUPER_MAX: 100,
+  SUPER_DAMAGE: 220,
+  SUPER_CUTIN_FRAMES: 90,
+  RESULT_DURATION: 180,
+  ENDING_DURATION: 300
+};
+
+const KEYS = {
+  LEFT: 'KeyA', RIGHT: 'KeyD', DOWN: 'KeyS', UP: 'KeyW',
+  LP: 'KeyU', HP: 'KeyI',
+  LK: 'KeyJ', HK: 'KeyK',
+  SP1: 'KeyO', SP2: 'KeyL',
+  SUPER: 'Space', // FIX #51
+  GUARD: 'KeyH', // FIX #28
+  PAUSE: 'Escape', CONFIRM: 'Enter'
+};
+
+const PALETTE = {
+  kenji: { main: '#FFFFFF', sub: '#CC2222', skin: '#E8B87A', hair: '#332211', outline: '#111111' },
+  vance: { main: '#556B2F', sub: '#8B7355', skin: '#DEB887', hair: '#FFD700', outline: '#111111' },
+  meilin: { main: '#2266CC', sub: '#FFFFFF', skin: '#F5DEB3', hair: '#111111', outline: '#111111' },
+  sagar: { main: '#EEEECC', sub: '#CC3333', skin: '#8B6914', hair: null, outline: '#111111' }
+};
+
+const STAGE_DATA = [
+  {
+    id: 'dragon_temple', name: 'Dragon Temple',
+    sky1: '#FF6633', sky2: '#FFB366', ground: '#887766', accent: '#CC2222',
+    drawBg(ctx, cx) {
+      const W = CFG.INTERNAL_W, H = CFG.INTERNAL_H, gy = CFG.GROUND_Y;
+      const t = Date.now() * 0.001;
+      let g = ctx.createLinearGradient(0, 0, 0, gy);
+      g.addColorStop(0, this.sky1); g.addColorStop(1, this.sky2);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+      // FIX #13: Add animated cloud layer for stage atmosphere.
+      let cloudX = (-cx * 0.08 - t * 4) % (W + 40);
+      for (let i = -1; i < 4; i++) {
+        const x = cloudX + i * 80;
+        const y = 18 + Math.sin(t + i * 1.4) * 2;
+        ctx.fillStyle = 'rgba(255,240,220,0.35)';
+        ctx.fillRect(x, y, 24, 6);
+        ctx.fillRect(x + 6, y - 4, 14, 4);
+      }
+      ctx.fillStyle = this.ground; ctx.fillRect(0, gy, W, H - gy);
+      let px = (-cx * 0.2) % 60;
+      ctx.fillStyle = '#AA6633';
+      for (let i = -1; i < 6; i++) { ctx.fillRect(px + i * 60, gy - 30, 8, 30); }
+      ctx.fillStyle = this.accent;
+      for (let i = -1; i < 6; i++) {
+        ctx.fillRect(px + i * 60, gy - 35, 12, 5);
+        ctx.fillRect(px + i * 60 - 1, gy - 32, 10, 2);
+      }
+      px = (-cx * 0.5) % 40;
+      ctx.fillStyle = '#776655';
+      for (let i = 0; i < 8; i++) { ctx.fillRect(px + i * 40, gy, 40, 2); }
+      ctx.fillStyle = '#FFCC44';
+      for (let i = -1; i < 4; i++) {
+        let lx = px + i * 80 + 30;
+        ctx.fillRect(lx, gy - 20, 4, 12);
+        ctx.fillStyle = '#FFEE88';
+        ctx.fillRect(lx - 1, gy - 22, 6, 4);
+        ctx.fillStyle = '#FFCC44';
+      }
+    }
+  },
+  {
+    id: 'military_base', name: 'Military Base',
+    sky1: '#6699CC', sky2: '#AACCEE', ground: '#888888', accent: '#556B2F',
+    drawBg(ctx, cx) {
+      const W = CFG.INTERNAL_W, H = CFG.INTERNAL_H, gy = CFG.GROUND_Y;
+      const t = Date.now() * 0.001;
+      let g = ctx.createLinearGradient(0, 0, 0, gy);
+      g.addColorStop(0, this.sky1); g.addColorStop(1, this.sky2);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+      ctx.fillStyle = this.ground; ctx.fillRect(0, gy, W, H - gy);
+      ctx.fillStyle = '#777777';
+      let px = (-cx * 0.2) % 80;
+      for (let i = -1; i < 5; i++) { ctx.fillRect(px + i * 80, gy - 40, 70, 40); }
+      ctx.fillStyle = '#999999';
+      for (let i = -1; i < 5; i++) { ctx.fillRect(px + i * 80, gy - 42, 72, 3); }
+      ctx.fillStyle = this.accent;
+      px = (-cx * 0.5) % 50;
+      for (let i = 0; i < 7; i++) {
+        ctx.fillRect(px + i * 50, gy - 2, 20, 4);
+      }
+      ctx.fillStyle = '#AABBCC';
+      ctx.beginPath();
+      let jx = (-cx * 0.15) + 180;
+      ctx.moveTo(jx, gy - 30); ctx.lineTo(jx + 15, gy - 35);
+      ctx.lineTo(jx + 30, gy - 30); ctx.lineTo(jx + 25, gy - 28);
+      ctx.lineTo(jx + 5, gy - 28); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#223344';
+      for (let i = 0; i < 9; i++) {
+        const sx = (i * 28 - cx * 0.18 + W) % (W + 18) - 9;
+        const bob = Math.sin(t * 3 + i) > 0 ? 0 : 1;
+        ctx.fillRect(sx, gy - 10 - bob, 3, 8 + bob);
+        ctx.fillRect(sx - 1, gy - 12 - bob, 5, 2);
+      }
+    }
+  },
+  {
+    id: 'night_market', name: 'Night Market',
+    sky1: '#1A0A2E', sky2: '#2D1B69', ground: '#554433', accent: '#FF4466',
+    drawBg(ctx, cx) {
+      const W = CFG.INTERNAL_W, H = CFG.INTERNAL_H, gy = CFG.GROUND_Y;
+      const t = Date.now() * 0.001;
+      let g = ctx.createLinearGradient(0, 0, 0, gy);
+      g.addColorStop(0, this.sky1); g.addColorStop(1, this.sky2);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+      ctx.fillStyle = this.ground; ctx.fillRect(0, gy, W, H - gy);
+      let px = (-cx * 0.3) % 50;
+      const neonColors = ['#FF4466', '#44FF88', '#4488FF', '#FFCC00'];
+      for (let i = -1; i < 7; i++) {
+        ctx.fillStyle = '#443322';
+        ctx.fillRect(px + i * 50, gy - 25, 30, 25);
+        ctx.fillStyle = '#553322';
+        ctx.fillRect(px + i * 50 - 2, gy - 28, 34, 4);
+        ctx.fillStyle = neonColors[((i % 4) + 4) % 4];
+        ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 300 + i) * 0.3;
+        ctx.fillRect(px + i * 50 + 5, gy - 35, 10, 6);
+        ctx.globalAlpha = 1;
+      }
+      px = (-cx * 0.15) % 30;
+      ctx.fillStyle = '#FF8844';
+      for (let i = 0; i < 10; i++) {
+        let ly = 10 + Math.sin(i * 2.5 + t * 1.5) * 5;
+        ctx.fillRect(px + i * 30, ly, 4, 6);
+        ctx.fillStyle = '#FFAA66';
+        ctx.fillRect(px + i * 30 + 1, ly + 1, 2, 2);
+        ctx.fillStyle = '#FF8844';
+      }
+      ctx.fillStyle = '#111111';
+      for (let i = 0; i < 8; i++) {
+        const sx = (i * 36 - cx * 0.25 + t * 18 + W) % (W + 12) - 6;
+        const arm = Math.sin(t * 6 + i) > 0 ? 1 : 0;
+        ctx.fillRect(sx, gy - 9, 3, 7);
+        ctx.fillRect(sx - 1, gy - 11 - arm, 5, 2 + arm);
+      }
+    }
+  },
+  {
+    id: 'sacred_river', name: 'Sacred River',
+    sky1: '#FFEEDD', sky2: '#FFCC99', ground: '#AA8866', accent: '#4488AA',
+    drawBg(ctx, cx) {
+      const W = CFG.INTERNAL_W, H = CFG.INTERNAL_H, gy = CFG.GROUND_Y;
+      const t = Date.now() * 0.001;
+      let g = ctx.createLinearGradient(0, 0, 0, gy);
+      g.addColorStop(0, this.sky1); g.addColorStop(1, this.sky2);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+      ctx.fillStyle = this.ground; ctx.fillRect(0, gy, W, H - gy);
+      let px = (-cx * 0.2) % 30;
+      ctx.fillStyle = '#997755';
+      for (let i = -1; i < 10; i++) {
+        for (let s = 0; s < 3; s++) {
+          ctx.fillRect(px + i * 30, gy + s * 6, 28, 5);
+        }
+      }
+      ctx.fillStyle = this.accent;
+      ctx.globalAlpha = 0.4;
+      ctx.fillRect(0, gy + 20, W, H - gy - 20);
+      ctx.globalAlpha = 0.2;
+      px = (-cx * 0.6 + Date.now() / 100) % 20;
+      for (let i = 0; i < 15; i++) {
+        ctx.fillRect(px + i * 20, gy + 22, 12, 1);
+      }
+      ctx.globalAlpha = 0.3;
+      for (let i = 0; i < 8; i++) {
+        const waveY = gy + 24 + Math.sin(t * 2 + i * 0.9) * 2;
+        ctx.fillRect(i * 32 - (cx * 0.3 % 16), waveY, 20, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+  },
+  {
+    id: 'final_arena', name: 'Final Arena',
+    sky1: '#0A0A0A', sky2: '#222222', ground: '#333333', accent: '#FFCC00',
+    drawBg(ctx, cx) {
+      const W = CFG.INTERNAL_W, H = CFG.INTERNAL_H, gy = CFG.GROUND_Y;
+      const t = Date.now() * 0.001;
+      let g = ctx.createLinearGradient(0, 0, 0, gy);
+      g.addColorStop(0, this.sky1); g.addColorStop(1, this.sky2);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+      ctx.fillStyle = this.ground; ctx.fillRect(0, gy, W, H - gy);
+      ctx.fillStyle = this.accent;
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.moveTo(W / 2 - 30, 0); ctx.lineTo(W / 2 + 30, 0);
+      ctx.lineTo(W / 2 + 60, gy); ctx.lineTo(W / 2 - 60, gy);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#222222';
+      let px = (-cx * 0.1) % 20;
+      for (let i = 0; i < 15; i++) {
+        let h = 8 + Math.sin(i * 1.3) * 4;
+        ctx.fillRect(px + i * 20, gy - h, 6, h);
+      }
+      ctx.fillStyle = '#444444';
+      ctx.fillRect(0, gy - 1, W, 2);
+      ctx.fillStyle = this.accent;
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(W / 2 - 50, gy, 100, 2);
+      ctx.globalAlpha = 0.35;
+      for (let i = 0; i < 18; i++) {
+        const sx = i * 14 - (cx * 0.4 % 14);
+        const cheer = Math.sin(t * 5 + i * 0.8) > 0 ? 1 : 0;
+        ctx.fillStyle = cheer ? '#666666' : '#555555';
+        ctx.fillRect(sx, gy - 12 - cheer, 4, 8 + cheer);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+];
+
+const CHAR_STAGE_MAP = { kenji: 0, vance: 1, meilin: 2, sagar: 3 };
+const ACTIVE_CHARS = ['kenji', 'vance', 'meilin']; // FIX #69
+const CHAR_STATS = {
+  kenji: { speed: 2, power: 2, reach: 2 },
+  vance: { speed: 2, power: 3, reach: 2 },
+  meilin: { speed: 3, power: 1, reach: 1 },
+  sagar: { speed: 1, power: 2, reach: 3 }
+};
+
+// FIX #63: Add Vance sprite set and keep Kenji reduced-frame spec.
+const SPRITE_DEF = {
+  kenji: {
+    idle: 1, walk_f: 4, crouch: 1, jump: 3,
+    stand_lp: 2, stand_hp: 2, stand_lk: 2, stand_hk: 2,
+    hadou: 2, shoryu: 2, hadou_ball: 1,
+    hit: 2, block: 2, ko: 2, win: 1
+  },
+  vance: {
+    idle: 1, walk_f: 4, crouch: 1, jump: 3,
+    stand_lp: 2, stand_hp: 2, stand_lk: 2, stand_hk: 2,
+    hadou: 2, shoryu: 2, hadou_ball: 1,
+    hit: 2, black: 2, ko: 2, win: 1
+  },
+  meilin: {
+    idle: 1, walk_f: 4, crouch: 1, jump: 3,
+    stand_lp: 2, stand_hp: 2, stand_lk: 2, stand_hk: 2,
+    hadou: 2, shoryu: 2, hadou_ball: 1,
+    hit: 2, block: 2, ko: 2, win: 1
+  }
+};
+
+const CHAR_ANIM_CFG = {
+  kenji: {
+    idle: { frames: [1], fps: 6, loop: true },
+    walk_f: { frames: [1,2,3,4], fps: 12, loop: true },
+    walk_b: { frames: [4,3,2,1], fps: 10, loop: true },
+    crouch: { frames: [1], fps: 6, loop: true },
+    jump: { frames: [1,2,3], fps: 10, loop: false },
+    stand_lp: { frames: [1,2], fps: 15, loop: false },
+    stand_hp: { frames: [1,2], fps: 12, loop: false },
+    stand_lk: { frames: [1,2], fps: 14, loop: false },
+    stand_hk: { frames: [1,2], fps: 11, loop: false },
+    hadou: { frames: [1,2], fps: 12, loop: false },
+    shoryu: { frames: [1,2], fps: 14, loop: false },
+    hit: { frames: [1,2], fps: 14, loop: false },
+    block: { frames: [1,2], fps: 10, loop: true },
+    ko: { frames: [1,2], fps: 6, loop: false },
+    win: { frames: [1], fps: 1, loop: true }
+  },
+  vance: {
+    idle: { frames: [1], fps: 6, loop: true },
+    walk_f: { frames: [1,2,3,4], fps: 11, loop: true },
+    walk_b: { frames: [4,3,2,1], fps: 10, loop: true },
+    crouch: { frames: [1], fps: 6, loop: true },
+    jump: { frames: [1,2,3], fps: 10, loop: false },
+    stand_lp: { frames: [1,2], fps: 15, loop: false },
+    stand_hp: { frames: [1,2], fps: 11, loop: false },
+    stand_lk: { frames: [1,2], fps: 14, loop: false },
+    stand_hk: { frames: [1,2], fps: 11, loop: false },
+    hadou: { frames: [1,2], fps: 12, loop: false },
+    shoryu: { frames: [1,2], fps: 12, loop: false },
+    hit: { frames: [1,2], fps: 14, loop: false },
+    block: { frames: [1,2], fps: 10, loop: true },
+    ko: { frames: [1,2], fps: 6, loop: false },
+    win: { frames: [1], fps: 1, loop: true }
+  },
+  meilin: {
+    idle: { frames: [1], fps: 7, loop: true },
+    walk_f: { frames: [1,2,3,4], fps: 12, loop: true },
+    walk_b: { frames: [4,3,2,1], fps: 11, loop: true },
+    crouch: { frames: [1], fps: 6, loop: true },
+    jump: { frames: [1,2,3], fps: 10, loop: false },
+    stand_lp: { frames: [1,2], fps: 16, loop: false },
+    stand_hp: { frames: [1,2], fps: 12, loop: false },
+    stand_lk: { frames: [1,2], fps: 15, loop: false },
+    stand_hk: { frames: [1,2], fps: 11, loop: false },
+    hadou: { frames: [1,2], fps: 12, loop: false },
+    shoryu: { frames: [1,2], fps: 12, loop: false },
+    hit: { frames: [1,2], fps: 14, loop: false },
+    block: { frames: [1,2], fps: 10, loop: true },
+    ko: { frames: [1,2], fps: 6, loop: false },
+    win: { frames: [1], fps: 1, loop: true }
+  }
+};
+
+const SPRITE_ACTION_FALLBACK = {
+  kenji: {
+    walk_b: 'walk_f',
+    hadou: 'stand_hp',
+    shoryu: 'stand_hk'
+  },
+  vance: {
+    walk_b: 'walk_f',
+    block: 'black',
+    hadou: 'stand_hp',
+    shoryu: 'stand_hk'
+  },
+  meilin: {
+    walk_b: 'walk_f',
+    stand_hk: 'stand_lk', // FIX #72
+    hadou: 'stand_hp',
+    shoryu: 'stand_hk'
+  }
+};
+
+const SpriteStore = {
+  cache: {},
+  trim: {},
+  readyChars: {},
+  _scanCanvas: null,
+  _scanCtx: null,
+  totalCount: 0,
+  loadedCount: 0,
+
+  init() {
+    this.cache = {};
+    this.trim = {};
+    this.readyChars = {};
+    this.totalCount = 0;
+    this.loadedCount = 0;
+    this._scanCanvas = document.createElement('canvas');
+    this._scanCtx = this._scanCanvas.getContext('2d', { willReadFrequently: true });
+    this.loadCharacter('kenji');
+    this.loadCharacter('vance'); // FIX #63
+    this.loadCharacter('meilin'); // FIX #69
+  },
+
+  loadCharacter(charId) {
+    const def = SPRITE_DEF[charId];
+    if (!def) return;
+    const jobs = [];
+    for (let action in def) {
+      const count = def[action];
+      for (let i = 1; i <= count; i++) {
+        const frame = String(i).padStart(2, '0');
+        const key = `${charId}:${action}:${frame}`;
+        const src = `asset/${charId}_${action}_${frame}.png`;
+        this.totalCount++;
+        jobs.push(new Promise((resolve) => {
+          let done = false;
+          const finish = (imgRef, trimRef) => {
+            if (done) return;
+            done = true;
+            this.cache[key] = imgRef;
+            this.trim[key] = trimRef;
+            this.loadedCount++;
+            resolve();
+          };
+          const img = new Image();
+          img.decoding = 'async';
+          // FIX #39: Shorter watchdog to avoid long "loading" stalls for missing optional sprites.
+          const watchdog = setTimeout(() => {
+            finish(null, null);
+          }, 2500);
+          img.onload = () => {
+            clearTimeout(watchdog);
+            try {
+              finish(img, this.computeTrim(img));
+            } catch (_e) {
+              const w = img.naturalWidth || img.width || 1;
+              const h = img.naturalHeight || img.height || 1;
+              finish(img, { x:0, y:0, w, h, footX:w * 0.5, footY:h - 1 });
+            }
+          };
+          img.onerror = () => {
+            clearTimeout(watchdog);
+            finish(null, null);
+          };
+          img.src = src;
+        }));
+      }
+    }
+    Promise.all(jobs).then(() => { this.readyChars[charId] = true; });
+  },
+
+  computeTrim(img) {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return { x:0, y:0, w:1, h:1 };
+
+    // FIX #32: fast trim scan (downscaled) to avoid loading stalls with 2K PNGs.
+    const MAX_SCAN = 256;
+    const scale = Math.min(1, MAX_SCAN / Math.max(w, h));
+    const sw = Math.max(1, Math.round(w * scale));
+    const sh = Math.max(1, Math.round(h * scale));
+    const c = this._scanCanvas;
+    const cx = this._scanCtx;
+    c.width = sw; c.height = sh;
+    cx.clearRect(0, 0, sw, sh);
+    cx.drawImage(img, 0, 0, sw, sh);
+    const data = cx.getImageData(0, 0, sw, sh).data;
+
+    let minX = sw, minY = sh, maxX = -1, maxY = -1;
+    for (let y = 0; y < sh; y++) {
+      for (let x = 0; x < sw; x++) {
+        const a = data[(y * sw + x) * 4 + 3];
+        if (a > 10) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0 || maxY < 0) return { x:0, y:0, w, h, footX: w / 2, footY: h - 1 };
+
+    let footXSum = 0, footCount = 0;
+    for (let x = minX; x <= maxX; x++) {
+      const a = data[(maxY * sw + x) * 4 + 3];
+      if (a > 10) { footXSum += x; footCount++; }
+    }
+    const inv = 1 / scale;
+    const margin = Math.max(1, Math.round(2 * scale));
+    const sx = Math.max(0, (minX - margin) * inv);
+    const sy = Math.max(0, (minY - margin) * inv);
+    const ex = Math.min(w - 1, (maxX + margin) * inv);
+    const ey = Math.min(h - 1, (maxY + margin) * inv);
+    const tw = Math.max(1, Math.round(ex - sx + 1));
+    const th = Math.max(1, Math.round(ey - sy + 1));
+    const footX = footCount > 0 ? (footXSum / footCount) * inv : ((sx + ex) * 0.5);
+    return {
+      x: Math.round(sx), y: Math.round(sy), w: tw, h: th,
+      footX: Math.round(footX - sx), footY: Math.round(ey - sy)
+    };
+  },
+
+  // FIX #35: Resolve sprite actions with graceful fallbacks for missing files.
+  get(charId, action, frameIndex) {
+    const def = SPRITE_DEF[charId] || {};
+    const fallbacks = (SPRITE_ACTION_FALLBACK[charId] || {});
+    const actions = [action];
+    if (fallbacks[action]) actions.push(fallbacks[action]);
+
+    for (const act of actions) {
+      const count = def[act] || 0;
+      if (!count) continue;
+      const clampedFrame = Math.max(1, Math.min(count, frameIndex));
+      const frame = String(clampedFrame).padStart(2, '0');
+      const key = `${charId}:${act}:${frame}`;
+      if (this.cache[key]) {
+        return { img: this.cache[key], trim: this.trim[key] || null };
+      }
+    }
+
+    for (const act of actions) {
+      const count = def[act] || 0;
+      if (!count) continue;
+      for (let i = 1; i <= count; i++) {
+        const key = `${charId}:${act}:${String(i).padStart(2, '0')}`;
+        if (this.cache[key]) return { img: this.cache[key], trim: this.trim[key] || null };
+      }
+    }
+
+    return { img: null, trim: null };
+  },
+
+  count(charId, action) {
+    const def = SPRITE_DEF[charId] || {};
+    if (def[action]) return def[action];
+    const fallback = SPRITE_ACTION_FALLBACK[charId] && SPRITE_ACTION_FALLBACK[charId][action];
+    return fallback ? (def[fallback] || 0) : 0;
+  },
+
+  progress() {
+    if (this.totalCount <= 0) return 0;
+    return this.loadedCount / this.totalCount;
+  },
+
+  isReady(charId) {
+    return !!this.readyChars[charId];
+  }
+};
+
+const BgImageStore = {
+  cache: {},
+  init() {
+    const files = {
+      title: ['ui_title_bg_01.png'],
+      charSelect: ['ui_charselect_bg_01.png'],
+      diffSelect: ['ui_diffselect_bg_01.png'],
+      stageEasy: ['stage_easy_01.png'],
+      stageNormal: ['stage_normal_01.png'],
+      stageHard: ['stage_hard_01.png', 'tage_hard_01.png'] // FIX #52
+    };
+    for (const key in files) this.loadAny(key, files[key]);
+  },
+  loadAny(key, names) {
+    const tryAt = (idx) => {
+      if (idx >= names.length) { this.cache[key] = null; return; }
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => { this.cache[key] = img; };
+      img.onerror = () => { tryAt(idx + 1); };
+      img.src = `asset/${names[idx]}`;
+    };
+    tryAt(0);
+  },
+  get(key) {
+    return this.cache[key] || null;
+  },
+  draw(ctx, key) {
+    const img = this.get(key);
+    if (!img) return false;
+    ctx.drawImage(img, 0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    return true;
+  },
+  stageKeyForDifficulty(diff) {
+    if (diff === 'easy') return 'stageEasy';
+    if (diff === 'hard') return 'stageHard';
+    return 'stageNormal';
+  }
+};
+
+const SuperVideoStore = {
+  cache: {},
+  key(attackerId, defenderId) {
+    return `${attackerId}->${defenderId}`;
+  },
+  init() {
+    // FIX #77: Load SA cinematic videos per attacker/defender pair (3 chars x 2 targets = 6 clips).
+    this.tryLoadPair('kenji', 'meilin', ['asset/v_sa_kenji-meilin.mp4', 'asset/v_sa_kenji_meilin.mp4']);
+    this.tryLoadPair('kenji', 'vance', ['asset/v_sa_kenji-vance.mp4', 'asset/v_sa_kenji_vance.mp4']);
+    this.tryLoadPair('meilin', 'kenji', ['asset/v_sa_meilin_kenji.mp4', 'asset/v_sa_meilin-kenji.mp4']);
+    this.tryLoadPair('meilin', 'vance', ['asset/v_sa_meilin_vance.mp4', 'asset/v_sa_meilin-vance.mp4']);
+    this.tryLoadPair('vance', 'kenji', ['asset/v_sa_vance_kenji.mp4', 'asset/v_sa_vance-kenji.mp4']);
+    this.tryLoadPair('vance', 'meilin', ['asset/v_sa_vance-meilin.mp4', 'asset/v_sa_vance_meilin.mp4']);
+
+    // Fallbacks for older single-file setups.
+    this.tryLoad('kenji', ['asset/kenji_super.mp4', 'asset/kenji_super.webm']);
+    this.tryLoad('meilin', ['asset/meilin_super.mp4', 'asset/meilin_super.webm']);
+    this.tryLoad('vance', ['asset/vance_super.mp4', 'asset/vance_super.webm']);
+  },
+  tryLoadPair(attackerId, defenderId, srcs) {
+    this.tryLoad(this.key(attackerId, defenderId), srcs);
+  },
+  tryLoad(cacheKey, srcs) {
+    if (!srcs || !srcs.length) return;
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.loop = false;
+    v.preload = 'auto';
+    const tryAt = (idx) => {
+      if (idx >= srcs.length) { this.cache[cacheKey] = null; return; }
+      v.onloadeddata = () => { this.cache[cacheKey] = v; };
+      v.onerror = () => { tryAt(idx + 1); };
+      v.src = srcs[idx];
+      v.load();
+    };
+    tryAt(0);
+  },
+  get(attackerId, defenderId) {
+    const pair = this.cache[this.key(attackerId, defenderId)];
+    if (pair) return pair;
+    return this.cache[attackerId] || null;
+  }
+};
+
+const SAImageStore = {
+  cache: {},
+  init() {
+    // FIX #80: SA splash image for 1-second pre-cinematic freeze.
+    this.tryLoad('kenji', 'asset/kenji_sa.png');
+    this.tryLoad('vance', 'asset/vance_sa.png');
+    this.tryLoad('meilin', 'asset/meilin_sa.png');
+  },
+  tryLoad(charId, src) {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => { this.cache[charId] = img; };
+    img.onerror = () => { this.cache[charId] = null; };
+    img.src = src;
+  },
+  get(charId) {
+    return this.cache[charId] || null;
+  }
+};
+
+function makeNormals(overrides) {
+  const base = {
+    standLP: { startup:4,active:3,recovery:7,damage:30,hitstun:12,blockstun:8,knockback:3,type:'high' },
+    standMP: { startup:6,active:4,recovery:12,damage:60,hitstun:16,blockstun:12,knockback:5,type:'high' },
+    standHP: { startup:8,active:4,recovery:18,damage:90,hitstun:20,blockstun:16,knockback:10,type:'high' },
+    standLK: { startup:5,active:3,recovery:8,damage:30,hitstun:12,blockstun:8,knockback:3,type:'mid' },
+    standMK: { startup:7,active:4,recovery:14,damage:60,hitstun:16,blockstun:12,knockback:6,type:'mid' },
+    standHK: { startup:10,active:5,recovery:20,damage:100,hitstun:22,blockstun:16,knockback:12,type:'mid' },
+    crouchLP: { startup:4,active:3,recovery:7,damage:20,hitstun:11,blockstun:7,knockback:2,type:'mid' },
+    crouchMP: { startup:6,active:4,recovery:13,damage:50,hitstun:15,blockstun:11,knockback:4,type:'mid' },
+    crouchHP: { startup:9,active:4,recovery:20,damage:80,hitstun:20,blockstun:15,knockback:9,type:'mid' },
+    crouchLK: { startup:4,active:3,recovery:8,damage:20,hitstun:11,blockstun:7,knockback:2,type:'low' },
+    crouchMK: { startup:7,active:4,recovery:16,damage:50,hitstun:15,blockstun:11,knockback:5,type:'low' },
+    crouchHK: { startup:8,active:5,recovery:24,damage:90,hitstun:0,blockstun:0,knockback:0,type:'low',sweep:true },
+    jumpLP: { startup:5,active:8,recovery:0,damage:30,hitstun:12,blockstun:10,knockback:2,type:'overhead' },
+    jumpMP: { startup:6,active:7,recovery:0,damage:60,hitstun:15,blockstun:12,knockback:3,type:'overhead' },
+    jumpHP: { startup:7,active:6,recovery:0,damage:80,hitstun:18,blockstun:14,knockback:4,type:'overhead' },
+    jumpLK: { startup:5,active:8,recovery:0,damage:30,hitstun:12,blockstun:10,knockback:2,type:'overhead' },
+    jumpMK: { startup:6,active:7,recovery:0,damage:50,hitstun:15,blockstun:12,knockback:3,type:'overhead' },
+    jumpHK: { startup:8,active:6,recovery:0,damage:90,hitstun:20,blockstun:14,knockback:5,type:'overhead' }
+  };
+  if (overrides) {
+    for (let k in overrides) {
+      if (base[k]) Object.assign(base[k], overrides[k]);
+      else base[k] = overrides[k];
+    }
+  }
+  return base;
+}
+
+const CHARACTERS = {
+  kenji: {
+    id: 'kenji', name: 'KENJI', subtitle: 'The Wandering Fist',
+    walkF: 4.0/CFG.SCALE, walkB: 2.5/CFG.SCALE, jumpV: -3.5,
+    pushW: 10, pushH: 20,
+    normals: makeNormals({}),
+    specials: {
+      spiritFist: {
+        command: [[2,3,6],'P'], type:'projectile',
+        versions: {
+          L:{startup:12,recovery:30,damage:60,projSpeed:1.0},
+          M:{startup:12,recovery:30,damage:70,projSpeed:1.5},
+          H:{startup:12,recovery:30,damage:80,projSpeed:2.0}
+        }
+      },
+      risingDragon: {
+        command: [[6,2,3],'P'], type:'antiAir',
+        versions: {
+          L:{startup:3,active:12,recovery:22,damage:100,invStart:1,invEnd:8,riseV:-4.0},
+          M:{startup:3,active:12,recovery:22,damage:120,invStart:1,invEnd:8,riseV:-4.5},
+          H:{startup:3,active:12,recovery:22,damage:140,invStart:1,invEnd:8,riseV:-5.0}
+        }
+      },
+      hurricaneKick: {
+        command: [[2,1,4],'K'], type:'advancing',
+        versions: {
+          L:{startup:8,active:4,hits:3,recovery:18,damagePerHit:40,advSpeed:1.5},
+          M:{startup:8,active:4,hits:3,recovery:18,damagePerHit:40,advSpeed:2.0},
+          H:{startup:8,active:4,hits:3,recovery:18,damagePerHit:40,advSpeed:2.5}
+        }
+      }
+    },
+    ending: [
+      "The tournament is over, but Kenji's journey continues.",
+      "True strength lies not in the fist, but in the heart.",
+      "He sets off once more, seeking the ultimate challenge."
+    ]
+  },
+  vance: {
+    id: 'vance', name: 'VANCE', subtitle: 'The Iron Soldier',
+    walkF: 3.5/CFG.SCALE, walkB: 3.0/CFG.SCALE, jumpV: -3.5,
+    pushW: 11, pushH: 21,
+    normals: makeNormals({
+      standMP:{startup:7,active:4,recovery:13,damage:65,hitstun:17,blockstun:13,knockback:6,type:'high'},
+      standHP:{startup:9,active:5,recovery:19,damage:95,hitstun:21,blockstun:17,knockback:11,type:'high'},
+      standMK:{startup:8,active:4,recovery:15,damage:65,hitstun:17,blockstun:13,knockback:7,type:'mid'},
+      standHK:{startup:11,active:5,recovery:22,damage:110,hitstun:24,blockstun:18,knockback:14,type:'mid'},
+      crouchHK:{startup:9,active:5,recovery:26,damage:90,hitstun:0,blockstun:0,knockback:0,type:'low',sweep:true}
+    }),
+    specials: {
+      sonicBlade: {
+        command: 'charge46P', type:'projectile', chargeDir:4, releaseDir:6,
+        versions: {
+          L:{startup:10,recovery:28,damage:50,projSpeed:1.25},
+          M:{startup:10,recovery:28,damage:60,projSpeed:1.75},
+          H:{startup:10,recovery:28,damage:70,projSpeed:2.25}
+        }
+      },
+      crescentKick: {
+        command: 'charge28K', type:'antiAir', chargeDir:2, releaseDir:8,
+        versions: {
+          L:{startup:4,active:10,recovery:24,damage:110,invStart:1,invEnd:6,riseV:-4.5},
+          M:{startup:4,active:10,recovery:24,damage:130,invStart:1,invEnd:6,riseV:-5.0},
+          H:{startup:4,active:10,recovery:24,damage:150,invStart:1,invEnd:6,riseV:-5.5}
+        }
+      },
+      spinKnuckle: {
+        command: [[6,3,2,1,4],'P'], type:'advancing',
+        versions: {
+          L:{startup:16,active:6,recovery:14,damage:80,advSpeed:2.0},
+          M:{startup:16,active:6,recovery:14,damage:80,advSpeed:2.0},
+          H:{startup:16,active:6,recovery:14,damage:80,advSpeed:2.0}
+        }
+      }
+    },
+    ending: [
+      "Mission complete. But the next battlefield awaits.",
+      "Vance boards the transport, his eyes on the horizon.",
+      "A soldier's duty never ends."
+    ]
+  },
+  meilin: {
+    id: 'meilin', name: 'MEI-LIN', subtitle: 'The Swift Dragon',
+    walkF: 4.5/CFG.SCALE, walkB: 3.0/CFG.SCALE, jumpV: -3.6,
+    pushW: 9, pushH: 19,
+    normals: makeNormals({
+      standLP:{startup:3,active:3,recovery:6,damage:25,hitstun:11,blockstun:7,knockback:2,type:'high'},
+      standMP:{startup:5,active:4,recovery:11,damage:55,hitstun:15,blockstun:11,knockback:5,type:'high'},
+      standHP:{startup:8,active:4,recovery:17,damage:85,hitstun:19,blockstun:15,knockback:10,type:'high'},
+      standLK:{startup:4,active:3,recovery:7,damage:25,hitstun:11,blockstun:7,knockback:2,type:'mid'},
+      standMK:{startup:6,active:4,recovery:13,damage:55,hitstun:15,blockstun:11,knockback:6,type:'mid'},
+      standHK:{startup:9,active:5,recovery:19,damage:95,hitstun:21,blockstun:15,knockback:12,type:'mid'},
+      crouchLP:{startup:3,active:3,recovery:6,damage:20,hitstun:10,blockstun:6,knockback:2,type:'mid'},
+      crouchLK:{startup:3,active:3,recovery:7,damage:20,hitstun:10,blockstun:6,knockback:2,type:'low'},
+      crouchHK:{startup:7,active:5,recovery:22,damage:80,hitstun:0,blockstun:0,knockback:0,type:'low',sweep:true}
+    }),
+    specials: {
+      rapidKicks: {
+        command: 'mash_P', type:'rapid',
+        versions: {
+          L:{startup:6,active:2,hits:8,recovery:20,damagePerHit:25},
+          M:{startup:6,active:2,hits:8,recovery:20,damagePerHit:25},
+          H:{startup:6,active:2,hits:8,recovery:20,damagePerHit:25}
+        }
+      },
+      whirlwindKick: {
+        command: [[2,1,4],'K'], type:'advancing',
+        versions: {
+          L:{startup:10,active:4,hits:4,recovery:22,damagePerHit:35,advSpeed:1.5},
+          M:{startup:10,active:4,hits:4,recovery:22,damagePerHit:35,advSpeed:2.0},
+          H:{startup:10,active:4,hits:4,recovery:22,damagePerHit:35,advSpeed:2.5}
+        }
+      },
+      skyAssault: {
+        command: [[2,3,6],'K'], type:'antiAir',
+        versions: {
+          L:{startup:14,active:6,recovery:16,damage:70,riseV:-3.0,advSpeed:2.0},
+          M:{startup:14,active:6,recovery:16,damage:80,riseV:-3.5,advSpeed:2.5},
+          H:{startup:14,active:6,recovery:16,damage:90,riseV:-4.0,advSpeed:3.0}
+        }
+      }
+    },
+    ending: [
+      "The title of world's greatest fighter is hers.",
+      "But for Mei-Lin, this is just the beginning.",
+      "She returns home to thunderous celebration."
+    ]
+  },
+  sagar: {
+    id: 'sagar', name: 'DALS', subtitle: 'The Mystic Sage',
+    walkF: 3.0/CFG.SCALE, walkB: 2.0/CFG.SCALE, jumpV: -3.4,
+    pushW: 9, pushH: 21,
+    normals: makeNormals({
+      standLP:{startup:5,active:3,recovery:8,damage:20,hitstun:10,blockstun:6,knockback:2,type:'high'},
+      standMP:{startup:8,active:4,recovery:16,damage:50,hitstun:14,blockstun:10,knockback:3,type:'high',reach:45},
+      standHP:{startup:12,active:5,recovery:22,damage:80,hitstun:18,blockstun:14,knockback:6,type:'high',reach:60},
+      standLK:{startup:5,active:3,recovery:8,damage:20,hitstun:10,blockstun:6,knockback:2,type:'mid'},
+      standMK:{startup:9,active:4,recovery:17,damage:50,hitstun:14,blockstun:10,knockback:3,type:'mid',reach:45},
+      standHK:{startup:13,active:5,recovery:24,damage:90,hitstun:20,blockstun:16,knockback:8,type:'mid',reach:65},
+      crouchMP:{startup:8,active:4,recovery:17,damage:45,hitstun:14,blockstun:10,knockback:3,type:'mid',reach:43},
+      crouchHP:{startup:12,active:5,recovery:24,damage:70,hitstun:18,blockstun:14,knockback:5,type:'mid',reach:55},
+      crouchMK:{startup:9,active:4,recovery:18,damage:45,hitstun:14,blockstun:10,knockback:3,type:'low',reach:43},
+      crouchHK:{startup:10,active:5,recovery:28,damage:80,hitstun:0,blockstun:0,knockback:0,type:'low',sweep:true,reach:55}
+    }),
+    specials: {
+      spiritFlame: {
+        command: [[2,3,6],'P'], type:'projectile',
+        versions: {
+          L:{startup:14,recovery:32,damage:50,projSpeed:0.75},
+          M:{startup:14,recovery:32,damage:60,projSpeed:1.0},
+          H:{startup:14,recovery:32,damage:70,projSpeed:1.25}
+        }
+      },
+      spiritBreath: {
+        command: [[4,1,2,3,6],'P'], type:'melee',
+        versions: {
+          L:{startup:18,active:12,recovery:26,damage:100,hits:2},
+          M:{startup:18,active:12,recovery:26,damage:110,hits:2},
+          H:{startup:18,active:12,recovery:26,damage:120,hits:2}
+        }
+      },
+      teleport: {
+        command: 'teleport', type:'teleport',
+        versions: {
+          forward:{startup:8,recovery:12,distance:75},
+          backward:{startup:8,recovery:12,distance:-75}
+        }
+      }
+    },
+    ending: [
+      "One step closer to the truth of the soul.",
+      "Sagar closes his eyes and begins to meditate.",
+      "The flame of enlightenment burns ever brighter."
+    ]
+  }
+};
+
+const AI_DATA = {
+  easy: { reactionDelay:20, guardRate:0.3, antiAirRate:0.2, comboRate:0.1, specialRate:0.2, throwRate:0.05, randomRate:0.5 },
+  normal: { reactionDelay:10, guardRate:0.6, antiAirRate:0.5, comboRate:0.4, specialRate:0.5, throwRate:0.15, randomRate:0.25 },
+  hard: { reactionDelay:4, guardRate:0.9, antiAirRate:0.85, comboRate:0.8, specialRate:0.75, throwRate:0.3, randomRate:0.1 }
+};
+
+const SCORE_TABLE = {
+  hitMult: 10, comboBonus: 5, perfect: 50000, timeBonus: 500,
+  roundWin: 10000, matchWin: 30000, gameClear: 100000
+};
+
+/* ===== SECTION 2: UTILITIES ===== */
+
+function clamp(v, min, max) { return v < min ? min : v > max ? max : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return {r,g,b};
+}
+function rgbaStr(hex, a) { const c = hexToRgb(hex); return `rgba(${c.r},${c.g},${c.b},${a})`; }
+
+function drawText(ctx, text, x, y, size, color, align, shadow) {
+  const supersample = 2;
+  const textAlign = align || 'center';
+  const logicalSize = size <= 4 ? size + 1.5 : size + 0.5; // FIX #21
+  const fontSize = Math.max(1, Math.round(logicalSize * supersample));
+
+  // FIX #21: Draw text at 2x then downscale for better readability on low-res canvas.
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1 / supersample, 1 / supersample);
+  ctx.textAlign = textAlign;
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+  ctx.font = `700 ${fontSize}px "Trebuchet MS","Hiragino Sans","Yu Gothic","Segoe UI",sans-serif`;
+
+  if (shadow !== false) {
+    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.fillText(text, 2, 2);
+  }
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.lineWidth = Math.max(1.4, Math.round(fontSize * 0.14));
+  ctx.strokeText(text, 0, 0);
+
+  ctx.fillStyle = color || '#FFFFFF';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+function drawTitleLogo(ctx, x, y, pulse) {
+  // FIX #50: Higher-quality title treatment (gradient + glow + stronger font styling).
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(pulse, pulse);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '900 18px "Arial Black","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  const g = ctx.createLinearGradient(0, -14, 0, 14);
+  g.addColorStop(0, '#FFE98A');
+  g.addColorStop(0.55, '#FFD330');
+  g.addColorStop(1, '#E6A900');
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 4;
+  ctx.strokeText('RISING FIST', 0, 0);
+  ctx.fillStyle = g;
+  ctx.fillText('RISING FIST', 0, 0);
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.fillStyle = 'rgba(255,221,85,0.85)';
+  ctx.fillRect(-43, 11, 86, 1.8);
+  ctx.fillStyle = 'rgba(20,10,0,0.65)';
+  ctx.fillRect(-43, 13.5, 86, 1.4);
+  ctx.restore();
+}
+
+function drawCharacterPortrait(ctx, charId, x, y, w, h, facingRight, opts) {
+  const mode = (opts && opts.mode) || 'default';
+  const pal = PALETTE[charId];
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = '#0F111A';
+  ctx.fillRect(x, y, w, h);
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, 'rgba(255,255,255,0.06)');
+  g.addColorStop(1, 'rgba(0,0,0,0.25)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+
+  if (SpriteStore.isReady(charId)) {
+    const sp = SpriteStore.get(charId, 'idle', 1);
+    if (sp.img && sp.trim) {
+      const t = sp.trim;
+      // FIX #47: Separate card/VS portrait framing to avoid head clipping on select cards.
+      const sx = t.x;
+      const sw = t.w;
+      const sy = mode === 'card' ? t.y : (t.y + Math.floor(t.h * 0.04));
+      const sh = Math.max(1, Math.floor(t.h * (mode === 'card' ? 0.68 : 0.72)));
+      const scale = mode === 'card'
+        ? Math.min(w / sw, h / sh) * 1.08
+        : Math.max(w / sw, h / sh);
+      const dw = sw * scale;
+      const dh = sh * scale;
+      const dx = x + (w - dw) / 2;
+      const dy = mode === 'card'
+        ? (y + 1)
+        : (y + (h - dh) / 2 + h * 0.08);
+      if (facingRight) {
+        ctx.drawImage(sp.img, sx, sy, sw, sh, dx, dy, dw, dh);
+      } else {
+        ctx.save();
+        ctx.translate(x + w, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(sp.img, sx, sy, sw, sh, w - (dx - x) - dw, dy, dw, dh);
+        ctx.restore();
+      }
+      ctx.restore();
+      return;
+    }
+  }
+
+  const px = x + w * 0.5;
+  const py = y + h * 0.8;
+  const dir = facingRight ? 1 : -1;
+  ctx.fillStyle = pal.main;
+  ctx.fillRect(px - 10, py - 16, 20, 18);
+  ctx.fillStyle = pal.skin;
+  ctx.fillRect(px - 7, py - 28, 14, 12);
+  if (pal.hair) {
+    ctx.fillStyle = pal.hair;
+    ctx.fillRect(px - 7, py - 28, 14, 5);
+  }
+  ctx.fillStyle = pal.sub;
+  ctx.fillRect(px - 11 + dir * 2, py - 8, 8, 4);
+  ctx.fillStyle = pal.outline;
+  ctx.strokeRect(px - 10, py - 16, 20, 18);
+  ctx.strokeRect(px - 7, py - 28, 14, 12);
+  ctx.restore();
+}
+
+function aabbOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/* ===== SECTION 3: CORE ENGINE ===== */
+
+class EventBus {
+  constructor() { this.listeners = {}; }
+  on(event, cb) { (this.listeners[event] = this.listeners[event] || []).push(cb); }
+  off(event, cb) {
+    if (this.listeners[event]) this.listeners[event] = this.listeners[event].filter(c => c !== cb);
+  }
+  emit(event, data) { (this.listeners[event] || []).forEach(cb => cb(data)); }
+  clear() { this.listeners = {}; }
+}
+
+const eventBus = new EventBus();
+
+class SceneManager {
+  constructor() { this.current = null; this.scenes = {}; }
+  add(name, scene) { this.scenes[name] = scene; }
+  go(name, data) {
+    if (this.current && this.scenes[this.current] && this.scenes[this.current].exit)
+      this.scenes[this.current].exit();
+    this.current = name;
+    if (this.scenes[name] && this.scenes[name].enter)
+      this.scenes[name].enter(data);
+  }
+  update() { if (this.scenes[this.current] && this.scenes[this.current].update) this.scenes[this.current].update(); }
+  render(ctx) { if (this.scenes[this.current] && this.scenes[this.current].render) this.scenes[this.current].render(ctx); }
+}
+
+class Camera {
+  constructor() { this.x = 0; this.shakeX = 0; this.shakeY = 0; this.shakeFrames = 0; this.shakeMag = 0; }
+  follow(x1, x2) {
+    const mid = (x1 + x2) / 2;
+    const halfW = CFG.INTERNAL_W / 2;
+    this.x = clamp(mid - halfW, 0, CFG.STAGE_W - CFG.INTERNAL_W);
+  }
+  shake(mag, frames) { this.shakeMag = mag; this.shakeFrames = frames; }
+  update() {
+    if (this.shakeFrames > 0) {
+      this.shakeX = rand(-this.shakeMag, this.shakeMag);
+      this.shakeY = rand(-this.shakeMag, this.shakeMag);
+      this.shakeFrames--;
+    } else { this.shakeX = 0; this.shakeY = 0; }
+  }
+  getOffset() { return { x: -this.x + this.shakeX, y: this.shakeY }; }
+}
+
+/* ===== SECTION 4: INPUT ===== */
+
+const CommandInterpreter = {
+  adjacentMap: {
+    1:[1,2,4], 2:[1,2,3], 3:[2,3,6],
+    4:[1,4,7], 5:[5],     6:[3,6,9],
+    7:[4,7,8], 8:[7,8,9], 9:[6,8,9]
+  },
+  isNear(inputDir, targetDir) {
+    const list = this.adjacentMap[targetDir] || [targetDir];
+    return list.includes(inputDir);
+  },
+  matchSequence(bufferDirs, cmdDirs, tolerance) {
+    if (!bufferDirs.length || !cmdDirs.length) return false;
+    let cmdIdx = cmdDirs.length - 1;
+    let miss = 0;
+    const maxMiss = Math.max(tolerance || 0, Math.floor(cmdDirs.length / 2));
+    for (let i = bufferDirs.length - 1; i >= 0 && cmdIdx >= 0; i--) {
+      if (this.isNear(bufferDirs[i], cmdDirs[cmdIdx])) {
+        cmdIdx--;
+      } else {
+        miss++;
+        if (miss > maxMiss) return false;
+      }
+    }
+    return cmdIdx < 0;
+  }
+};
+
+class InputManager {
+  constructor() {
+    this.keys = {};
+    this.justPressed = {};
+    this.prevKeys = {};
+    this.dirBuffer = [];
+    this.mashCount = 0;
+    this.mashTimer = 0;
+    this.chargeTimers = { 4: 0, 2: 0 };
+    this.chargeReady = { 4: false, 2: false };
+    this.chargeRelease = { 4: 0, 2: 0 };
+    this._onDown = e => { this.keys[e.code] = true; e.preventDefault(); };
+    this._onUp = e => { this.keys[e.code] = false; e.preventDefault(); };
+    document.addEventListener('keydown', this._onDown);
+    document.addEventListener('keyup', this._onUp);
+  }
+  update(facingRight) {
+    this.justPressed = {};
+    for (let k in this.keys) {
+      if (this.keys[k] && !this.prevKeys[k]) this.justPressed[k] = true;
+    }
+    const dir = this.getDirection(facingRight);
+    // FIX #5: Command buffer ignores neutral and keeps only directional transitions.
+    if (dir !== 5) {
+      if (this.dirBuffer.length === 0 || this.dirBuffer[this.dirBuffer.length - 1].dir !== dir) {
+        this.dirBuffer.push({ dir, age: 0 });
+      }
+    }
+    for (let i = this.dirBuffer.length - 1; i >= 0; i--) {
+      this.dirBuffer[i].age++;
+      if (this.dirBuffer[i].age > CFG.INPUT_BUFFER) this.dirBuffer.splice(i, 1);
+    }
+    // FIX #33: Player mash tracking now uses LP/HP only (MP removed from key layout).
+    if (this.justPressed[KEYS.LP] || this.justPressed[KEYS.HP]) {
+      this.mashCount++;
+      this.mashTimer = CFG.MASH_WINDOW; // FIX #9
+    }
+    if (this.mashTimer > 0) this.mashTimer--;
+    else this.mashCount = 0;
+
+    for (let d of [4, 2]) {
+      const held = (d === 4 && this.isHeld(facingRight ? KEYS.LEFT : KEYS.RIGHT)) ||
+                   (d === 2 && this.keys[KEYS.DOWN]);
+      if (held) {
+        this.chargeTimers[d]++;
+        if (this.chargeTimers[d] >= CFG.CHARGE_FRAMES) this.chargeReady[d] = true;
+        this.chargeRelease[d] = 0;
+      } else {
+        if (this.chargeReady[d]) {
+          this.chargeRelease[d]++;
+          if (this.chargeRelease[d] > CFG.CHARGE_HOLD) {
+            this.chargeReady[d] = false;
+          }
+        }
+        this.chargeTimers[d] = 0;
+      }
+    }
+    this.prevKeys = Object.assign({}, this.keys);
+  }
+  isHeld(code) { return !!this.keys[code]; }
+  wasPressed(code) { return !!this.justPressed[code]; }
+  getDirection(facingRight) {
+    const l = this.keys[KEYS.LEFT], r = this.keys[KEYS.RIGHT],
+          u = this.keys[KEYS.UP], d = this.keys[KEYS.DOWN];
+    let h = 0, v = 0;
+    if (l) h = -1; if (r) h = 1;
+    if (u) v = -1; if (d) v = 1;
+    if (h === 0 && v === 0) return 5;
+    const fwd = facingRight ? 1 : -1;
+    const relH = h * fwd;
+    if (v === -1) { if (relH < 0) return 7; if (relH > 0) return 9; return 8; }
+    if (v === 1) { if (relH < 0) return 1; if (relH > 0) return 3; return 2; }
+    if (relH < 0) return 4; return 6;
+  }
+  checkCommand(cmdDirs) {
+    // FIX #5: Use partial subsequence matching with diagonal tolerance.
+    const dirs = this.dirBuffer.map(e => e.dir).filter(d => d !== 5);
+    return CommandInterpreter.matchSequence(dirs, cmdDirs, CFG.COMMAND_MISS_TOLERANCE);
+  }
+  getPressedButton() {
+    if (this.justPressed[KEYS.LP]) return 'LP';
+    if (this.justPressed[KEYS.HP]) return 'HP';
+    if (this.justPressed[KEYS.LK]) return 'LK';
+    if (this.justPressed[KEYS.HK]) return 'HK';
+    return null;
+  }
+  getStrength(btn) {
+    if (!btn) return null;
+    if (btn.endsWith('P') || btn.endsWith('K')) {
+      if (btn.startsWith('L')) return 'L';
+      if (btn.startsWith('M')) return 'M';
+      return 'H';
+    }
+    return 'L';
+  }
+  isAttackButton(btn) { return btn && (btn.endsWith('P') || btn.endsWith('K')); }
+  isPunch(btn) { return btn && btn.endsWith('P'); }
+  isKick(btn) { return btn && btn.endsWith('K'); }
+  reset() {
+    this.dirBuffer = [];
+    this.mashCount = 0;
+    this.mashTimer = 0;
+    this.chargeTimers = { 4:0, 2:0 };
+    this.chargeReady = { 4:false, 2:false };
+    this.chargeRelease = { 4:0, 2:0 };
+  }
+}
+
+/* ===== SECTION 5: PHYSICS ===== */
+
+const CollisionSystem = {
+  checkHit(attacker, defender) {
+    if (!attacker.hitBox || !defender.hurtBox) return false;
+    return aabbOverlap(attacker.hitBox, defender.hurtBox);
+  },
+  checkThrow(thrower, target) {
+    const dist = Math.abs(thrower.x - target.x);
+    return dist <= CFG.THROW_RANGE && target.y >= CFG.GROUND_Y - 2 && !target.isInvincible();
+  },
+  resolvePushboxes(f1, f2) {
+    const clampToStage = (f) => {
+      // FIX #75: Keep full sprite body visible at stage edges, not just pushbox center.
+      const minX = Math.max(f.pushW / 2, CFG.CHAR_EDGE_PADDING);
+      const maxX = CFG.STAGE_W - Math.max(f.pushW / 2, CFG.CHAR_EDGE_PADDING);
+      const before = f.x;
+      f.x = clamp(f.x, minX, maxX);
+      return before !== f.x;
+    };
+    const pushApart = (a, b, amount) => {
+      if (a.x < b.x) { a.x -= amount; b.x += amount; }
+      else { a.x += amount; b.x -= amount; }
+    };
+
+    clampToStage(f1);
+    clampToStage(f2);
+
+    const hw1 = f1.pushW / 2, hw2 = f2.pushW / 2;
+    let overlap = (hw1 + hw2) - Math.abs(f1.x - f2.x);
+    if (overlap > 0) {
+      pushApart(f1, f2, overlap / 2 + 0.5);
+    }
+
+    // FIX #4: Re-apply stage clamps after pushbox resolution and resolve residual overlap.
+    const c1 = clampToStage(f1);
+    const c2 = clampToStage(f2);
+    overlap = (hw1 + hw2) - Math.abs(f1.x - f2.x);
+    if (overlap > 0) {
+      if (c1 && !c2) {
+        if (f1.x < f2.x) f2.x += overlap + 0.5;
+        else f2.x -= overlap + 0.5;
+      } else if (c2 && !c1) {
+        if (f1.x < f2.x) f1.x -= overlap + 0.5;
+        else f1.x += overlap + 0.5;
+      } else {
+        pushApart(f1, f2, overlap / 2 + 0.5);
+      }
+      clampToStage(f1);
+      clampToStage(f2);
+    }
+  }
+};
+
+/* ===== SECTION 6: RENDERING ===== */
+
+class ParticleManager {
+  constructor() {
+    this.pool = [];
+    for (let i = 0; i < CFG.MAX_PARTICLES; i++)
+      this.pool.push({ active:false, x:0, y:0, vx:0, vy:0, life:0, maxLife:0, color:'#FFF', size:1, gravity:0, fade:true });
+    this.idx = 0;
+  }
+  spawn(x, y, vx, vy, life, color, size, gravity, fade) {
+    const p = this.pool[this.idx];
+    p.active = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+    p.life = life; p.maxLife = life; p.color = color; p.size = size;
+    p.gravity = gravity || 0; p.fade = fade !== false;
+    this.idx = (this.idx + 1) % CFG.MAX_PARTICLES;
+  }
+  spawnHitSpark(x, y) {
+    for (let i = 0; i < 8; i++) {
+      const a = rand(0, Math.PI * 2), s = rand(0.5, 2);
+      this.spawn(x, y, Math.cos(a)*s, Math.sin(a)*s, 12, i%2?'#FFFFFF':'#FFFF44', rand(0.5,1.5), 0.05, true);
+    }
+  }
+  spawnBlockSpark(x, y) {
+    for (let i = 0; i < 5; i++) {
+      const a = rand(0, Math.PI * 2), s = rand(0.3, 1.5);
+      this.spawn(x, y, Math.cos(a)*s, Math.sin(a)*s, 8, i%2?'#AACCFF':'#FFFFFF', rand(0.5,1.2), 0.03, true);
+    }
+  }
+  update() {
+    for (let p of this.pool) {
+      if (!p.active) continue;
+      p.x += p.vx; p.y += p.vy; p.vy += p.gravity; p.life--;
+      if (p.life <= 0) p.active = false;
+    }
+  }
+  render(ctx) {
+    for (let p of this.pool) {
+      if (!p.active) continue;
+      ctx.globalAlpha = p.fade ? p.life / p.maxLife : 1;
+      ctx.fillStyle = p.color;
+      // FIX #45: Render particles as soft circles to avoid square artifact flashes.
+      ctx.beginPath();
+      ctx.arc(Math.round(p.x), Math.round(p.y), Math.max(0.6, p.size * 0.65), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  clear() { for (let p of this.pool) p.active = false; }
+}
+
+const particles = new ParticleManager();
+
+/* ===== SECTION 7: ENTITIES (Fighter + Projectile) ===== */
+
+class Projectile {
+  constructor() { this.active = false; }
+  fire(x, y, speed, damage, owner, facingRight, styleId) {
+    this.active = true;
+    this.x = x; this.y = y;
+    this.speed = facingRight ? speed : -speed;
+    this.damage = damage;
+    this.owner = owner;
+    this.facingRight = facingRight;
+    this.styleId = styleId || 'kenji';
+    this.life = CFG.PROJ_MAX_LIFE;
+    this.hitBox = { x: x - CFG.PROJ_SIZE/2, y: y - CFG.PROJ_SIZE/2, w: CFG.PROJ_SIZE, h: CFG.PROJ_SIZE };
+    this.trail = [];
+  }
+  update() {
+    if (!this.active) return;
+    this.trail.push({ x: this.x, y: this.y, age: 0 });
+    if (this.trail.length > 3) this.trail.shift();
+    for (let t of this.trail) t.age++;
+    this.x += this.speed;
+    this.hitBox.x = this.x - CFG.PROJ_SIZE/2;
+    this.hitBox.y = this.y - CFG.PROJ_SIZE/2;
+    this.life--;
+    if (this.life <= 0 || this.x < -10 || this.x > CFG.STAGE_W + 10) this.active = false;
+  }
+  render(ctx, camOff) {
+    if (!this.active) return;
+    const ox = camOff.x, oy = camOff.y;
+    const base = CFG.PROJ_SIZE;
+    // FIX #40: Use Kenji hadou-ball PNG when available.
+    if (this.styleId === 'kenji') {
+      const ball = SpriteStore.get('kenji', 'hadou_ball', 1);
+      if (ball.img && ball.trim) {
+        const t = ball.trim;
+        const pulse = 1 + Math.sin((CFG.PROJ_MAX_LIFE - this.life) * 0.4) * 0.07;
+        // FIX #42: Upscale hadou ball to character-class presence.
+        const size = Math.max(base * 7.2, 62) * pulse;
+        const x = Math.round(this.x + ox);
+        const y = Math.round(this.y + oy);
+        for (let i = 0; i < this.trail.length; i++) {
+          const tr = this.trail[i];
+          const a = 0.18 * (i + 1) / this.trail.length;
+          const ts = size * (0.78 + i * 0.08);
+          ctx.globalAlpha = a;
+          ctx.drawImage(ball.img, t.x, t.y, t.w, t.h, Math.round(tr.x + ox - ts * 0.5), Math.round(tr.y + oy - ts * 0.5), Math.round(ts), Math.round(ts));
+        }
+        // FIX #48: Remove translucent square aura behind projectile image.
+        ctx.globalAlpha = 1;
+        ctx.drawImage(ball.img, t.x, t.y, t.w, t.h, Math.round(x - size * 0.5), Math.round(y - size * 0.5), Math.round(size), Math.round(size));
+        return;
+      }
+    }
+    if (this.styleId === 'vance') {
+      // FIX #65: Use Vance sonic-boom sprite when available.
+      const ball = SpriteStore.get('vance', 'hadou_ball', 1);
+      if (ball.img && ball.trim) {
+        const t = ball.trim;
+        const pulse = 1 + Math.sin((CFG.PROJ_MAX_LIFE - this.life) * 0.36) * 0.05;
+        const sizeW = Math.max(base * 9.5, 84) * pulse;
+        const sizeH = Math.max(base * 4.2, 34) * pulse;
+        const x = Math.round(this.x + ox);
+        const y = Math.round(this.y + oy);
+        for (let i = 0; i < this.trail.length; i++) {
+          const tr = this.trail[i];
+          const a = 0.16 * (i + 1) / this.trail.length;
+          ctx.globalAlpha = a;
+          ctx.drawImage(
+            ball.img, t.x, t.y, t.w, t.h,
+            Math.round(tr.x + ox - sizeW * 0.45), Math.round(tr.y + oy - sizeH * 0.5),
+            Math.round(sizeW * (0.86 + i * 0.06)), Math.round(sizeH * (0.86 + i * 0.06))
+          );
+        }
+        ctx.globalAlpha = 1;
+        ctx.drawImage(ball.img, t.x, t.y, t.w, t.h, Math.round(x - sizeW * 0.5), Math.round(y - sizeH * 0.5), Math.round(sizeW), Math.round(sizeH));
+        return;
+      }
+    }
+    if (this.styleId === 'meilin') {
+      // FIX #71: Use Mei-Lin projectile sprite when available.
+      const ball = SpriteStore.get('meilin', 'hadou_ball', 1);
+      if (ball.img && ball.trim) {
+        const t = ball.trim;
+        const pulse = 1 + Math.sin((CFG.PROJ_MAX_LIFE - this.life) * 0.45) * 0.06;
+        const size = Math.max(base * 6.4, 52) * pulse;
+        const x = Math.round(this.x + ox);
+        const y = Math.round(this.y + oy);
+        for (let i = 0; i < this.trail.length; i++) {
+          const tr = this.trail[i];
+          const a = 0.15 * (i + 1) / this.trail.length;
+          const ts = size * (0.8 + i * 0.05);
+          ctx.globalAlpha = a;
+          ctx.drawImage(ball.img, t.x, t.y, t.w, t.h, Math.round(tr.x + ox - ts * 0.5), Math.round(tr.y + oy - ts * 0.5), Math.round(ts), Math.round(ts));
+        }
+        ctx.globalAlpha = 1;
+        ctx.drawImage(ball.img, t.x, t.y, t.w, t.h, Math.round(x - size * 0.5), Math.round(y - size * 0.5), Math.round(size), Math.round(size));
+        return;
+      }
+    }
+    // FIX #14: Character-specific projectile visuals.
+    if (this.styleId === 'vance') {
+      for (let t of this.trail) {
+        ctx.globalAlpha = 0.18 * (1 - t.age / 4);
+        ctx.strokeStyle = '#88EEFF';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(Math.round(t.x + ox), Math.round(t.y + oy), Math.max(2, base * 0.9 - t.age), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#AAFFFF';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(Math.round(this.x + ox), Math.round(this.y + oy), base * 0.9, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#44CCFF';
+      ctx.beginPath();
+      ctx.arc(Math.round(this.x + ox), Math.round(this.y + oy), base * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+
+    const trailA = this.styleId === 'sagar' ? '#FF7733' : '#77CCFF';
+    const trailB = this.styleId === 'sagar' ? '#FFCC66' : '#AADDFF';
+    const core = this.styleId === 'sagar' ? '#FFEE88' : '#FFFFFF';
+    const trailSize = Math.max(4, Math.round(base * 0.8));
+    const shell = Math.max(6, Math.round(base * 1.35));
+    const coreSize = Math.max(3, Math.round(base * 0.55));
+    for (let t of this.trail) {
+      ctx.globalAlpha = 0.35 * (1 - t.age / 4);
+      ctx.fillStyle = (t.age % 2 === 0) ? trailA : trailB;
+      ctx.fillRect(Math.round(t.x + ox - trailSize / 2), Math.round(t.y + oy - trailSize / 2), trailSize, trailSize);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = trailA;
+    ctx.fillRect(Math.round(this.x + ox - shell / 2), Math.round(this.y + oy - shell / 2), shell, shell);
+    ctx.fillStyle = core;
+    ctx.fillRect(Math.round(this.x + ox - coreSize / 2), Math.round(this.y + oy - coreSize / 2), coreSize, coreSize);
+  }
+  destroy() { this.active = false; }
+}
+
+const projectiles = [new Projectile(), new Projectile()];
+
+const STATES = {
+  IDLE:'idle', WALK_F:'walkF', WALK_B:'walkB', CROUCH:'crouch',
+  JUMP_RISE:'jumpRise', JUMP_PEAK:'jumpPeak', JUMP_FALL:'jumpFall', LANDING:'landing',
+  STAND_ATTACK:'standAttack', CROUCH_ATTACK:'crouchAttack', JUMP_ATTACK:'jumpAttack',
+  SPECIAL:'special', HITSTUN:'hitstun', BLOCKSTUN:'blockstun',
+  KNOCKDOWN:'knockdown', GETUP:'getup', THROW:'throw', THROWN:'thrown',
+  KO_FLY:'koFly', WIN:'win', LOSE:'lose'
+};
+
+class Fighter {
+  constructor(charId, playerIndex) {
+    this.charId = charId;
+    this.data = CHARACTERS[charId];
+    this.pal = PALETTE[charId];
+    this.pi = playerIndex;
+    this.x = 0; this.y = CFG.GROUND_Y; this.vy = 0;
+    this.facingRight = playerIndex === 0;
+    this.hp = CFG.MAX_HP; this.displayHp = CFG.MAX_HP;
+    this.state = STATES.IDLE;
+    this.stateTimer = 0;
+    this.currentAttack = null;
+    this.currentSpecial = null;
+    this.specialVersion = null;
+    this.attackPhase = 'none';
+    this.attackFrame = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.hitstunFrames = 0;
+    this.blockstunFrames = 0;
+    this.invincibleFrames = 0;
+    this.pushW = this.data.pushW;
+    this.pushH = this.data.pushH;
+    this.hitBox = null;
+    this.hurtBox = null;
+    this.hasHitThisAttack = false;
+    this.airAttackUsed = false;
+    this.animFrame = 0;
+    this.animTimer = 0;
+    this.wins = 0;
+    this.throwEscapeWindow = 0;
+    this.isBeingThrown = false;
+    this.knockbackVx = 0;
+    this.jumpVx = 0;
+    this.specialHitCount = 0;
+    this.specialHitTimer = 0;
+    this.hitConfirmFrames = 0;
+    this.lastHitBlocked = false;
+    this.koVx = 0;
+    this.koBounces = 0;
+    this.spriteAction = 'idle';
+    this.spriteActionTime = 0;
+    this.spriteFrame = 1;
+    this.projectilePoseFrames = 0;
+    this.superMeter = 0;
+  }
+
+  reset(posX, keepSuper = false) {
+    this.x = posX; this.y = CFG.GROUND_Y; this.vy = 0;
+    this.hp = CFG.MAX_HP; this.displayHp = CFG.MAX_HP;
+    this.state = STATES.IDLE; this.stateTimer = 0;
+    this.currentAttack = null; this.currentSpecial = null;
+    this.attackPhase = 'none'; this.attackFrame = 0;
+    this.comboCount = 0; this.comboTimer = 0;
+    this.hitstunFrames = 0; this.blockstunFrames = 0;
+    this.invincibleFrames = 0;
+    this.hitBox = null; this.hurtBox = null;
+    this.hasHitThisAttack = false; this.airAttackUsed = false;
+    this.animFrame = 0; this.animTimer = 0;
+    this.throwEscapeWindow = 0; this.isBeingThrown = false;
+    this.knockbackVx = 0; this.jumpVx = 0;
+    this.specialHitCount = 0; this.specialHitTimer = 0;
+    this.hitConfirmFrames = 0; this.lastHitBlocked = false;
+    this.koVx = 0; this.koBounces = 0;
+    this.spriteAction = 'idle'; this.spriteActionTime = 0; this.spriteFrame = 1;
+    this.projectilePoseFrames = 0;
+    // FIX #79: Preserve super gauge between rounds when requested.
+    if (!keepSuper) this.superMeter = 0;
+  }
+
+  // FIX #54: Super gauge helpers.
+  addSuperMeter(amount) {
+    this.superMeter = clamp(this.superMeter + amount, 0, CFG.SUPER_MAX);
+  }
+  canUseSuper() {
+    return this.superMeter >= CFG.SUPER_MAX && this.canAct();
+  }
+  consumeSuper() {
+    this.superMeter = 0;
+  }
+
+  isOnGround() { return this.y >= CFG.GROUND_Y - 0.5; }
+  isInvincible() { return this.invincibleFrames > 0; }
+  isInAttack() {
+    return this.state === STATES.STAND_ATTACK || this.state === STATES.CROUCH_ATTACK ||
+           this.state === STATES.JUMP_ATTACK || this.state === STATES.SPECIAL;
+  }
+  isInHitstun() { return this.state === STATES.HITSTUN || this.state === STATES.BLOCKSTUN; }
+  isInKnockdown() { return this.state === STATES.KNOCKDOWN || this.state === STATES.GETUP; }
+  canAct() {
+    return this.state === STATES.IDLE || this.state === STATES.WALK_F ||
+           this.state === STATES.WALK_B || this.state === STATES.CROUCH;
+  }
+  canBlock() {
+    return !this.isInAttack() && !this.isInKnockdown() && this.state !== STATES.THROWN &&
+           this.state !== STATES.THROW;
+  }
+
+  updateFacing(other) {
+    if (this.canAct() || this.state === STATES.IDLE) {
+      this.facingRight = this.x < other.x;
+    }
+  }
+
+  takeDamage(dmg, hitstun, blockstun, knockback, isBlocked, type, isSpecial, comboCount) {
+    const scaling = CFG.COMBO_SCALING[Math.min(comboCount, CFG.COMBO_SCALING.length - 1)];
+    let finalDmg;
+    if (isBlocked) {
+      finalDmg = isSpecial ? Math.round(dmg * CFG.CHIP_SPECIAL) : 0;
+      this.blockstunFrames = blockstun;
+      this.state = STATES.BLOCKSTUN;
+      this.knockbackVx = (this.facingRight ? -1 : 1) * knockback * 0.1;
+    } else {
+      finalDmg = Math.round(dmg * scaling);
+      if (type === 'low' && this.data.normals.crouchHK && this.data.normals.crouchHK.sweep && hitstun === 0) {
+        this.state = STATES.KNOCKDOWN;
+        this.stateTimer = CFG.WAKEUP_TIME;
+        this.vy = -1.5;
+        this.knockbackVx = (this.facingRight ? -1 : 1) * 1.5;
+      } else {
+        this.hitstunFrames = hitstun;
+        this.state = STATES.HITSTUN;
+        this.knockbackVx = (this.facingRight ? -1 : 1) * knockback * 0.2;
+      }
+    }
+    this.hp = Math.max(0, this.hp - finalDmg);
+    this.stateTimer = 0;
+    this.animFrame = 0;
+    return finalDmg;
+  }
+
+  applyKnockdown() {
+    this.state = STATES.KNOCKDOWN;
+    this.stateTimer = CFG.WAKEUP_TIME;
+    this.vy = -2;
+    this.knockbackVx = (this.facingRight ? -1 : 1) * 1;
+  }
+
+  startKoBlowAway(attackerX) {
+    // FIX #15: KO defeat follows a parabola and includes bounce before settling.
+    const awayDir = this.x >= attackerX ? 1 : -1;
+    this.state = STATES.KO_FLY;
+    this.vy = -3.6;
+    this.koVx = awayDir * 2.4;
+    this.koBounces = 1;
+    this.hitBox = null;
+  }
+
+  startAttack(attackName, isCrouch) {
+    const atk = this.data.normals[attackName];
+    if (!atk) return;
+    this.currentAttack = attackName;
+    this.currentSpecial = null;
+    this.state = isCrouch ? STATES.CROUCH_ATTACK :
+                 (attackName.startsWith('jump') ? STATES.JUMP_ATTACK : STATES.STAND_ATTACK);
+    this.attackPhase = 'startup';
+    this.attackFrame = 0;
+    this.hasHitThisAttack = false;
+    this.animFrame = 0;
+  }
+
+  startSpecial(specialName, version) {
+    this.currentSpecial = specialName;
+    this.specialVersion = version;
+    this.currentAttack = null;
+    this.state = STATES.SPECIAL;
+    this.attackPhase = 'startup';
+    this.attackFrame = 0;
+    this.hasHitThisAttack = false;
+    this.specialHitCount = 0;
+    this.specialHitTimer = 0;
+    this.animFrame = 0;
+    this.projectilePoseFrames = 0;
+  }
+
+  getAttackData() {
+    if (this.currentAttack) return this.data.normals[this.currentAttack];
+    if (this.currentSpecial) {
+      const sp = this.data.specials[this.currentSpecial];
+      if (sp && sp.versions) return sp.versions[this.specialVersion] || sp.versions.L;
+    }
+    return null;
+  }
+
+  getSpecialData() {
+    if (!this.currentSpecial) return null;
+    return this.data.specials[this.currentSpecial];
+  }
+
+  markHitConfirm(isBlocked) {
+    this.lastHitBlocked = !!isBlocked;
+    this.hitConfirmFrames = isBlocked ? 0 : CFG.HIT_CONFIRM_WINDOW;
+  }
+
+  canSpecialCancel() {
+    return this.hitConfirmFrames > 0 && !this.lastHitBlocked && !!this.currentAttack;
+  }
+
+  getCurrentAttackStrength() {
+    const name = this.currentAttack || '';
+    if (name.endsWith('LP') || name.endsWith('LK')) return 'L';
+    if (name.endsWith('MP') || name.endsWith('MK')) return 'M';
+    if (name.endsWith('HP') || name.endsWith('HK')) return 'H';
+    return null;
+  }
+
+  getNormalHitbox(dir, reach) {
+    // FIX #68: Expand normal hitboxes to better match visible punch/kick reach.
+    const atkName = this.currentAttack || '';
+    const isPunch = atkName.endsWith('P');
+    const isKick = atkName.endsWith('K');
+    const isCrouch = atkName.startsWith('crouch');
+    const isJump = atkName.startsWith('jump');
+    const strength = this.getCurrentAttackStrength();
+    const tier = strength === 'H' ? 2 : (strength === 'M' ? 1 : 0);
+
+    let forward = isPunch ? [16, 21, 27][tier] : [18, 24, 30][tier];
+    let backward = isPunch ? [11, 14, 17][tier] : [12, 15, 18][tier];
+    let width = forward + backward;
+    let height = isPunch ? [14, 16, 18][tier] : [15, 17, 19][tier];
+    let yTop = isPunch ? -20 : -13;
+
+    if (isCrouch) {
+      yTop += 6;
+      if (isKick) { width += 5; forward += 3; backward += 2; }
+    }
+    if (isJump) {
+      yTop -= 2;
+      if (isKick) { width += 6; height += 2; }
+    }
+
+    const reachBonus = Math.max(0, Math.floor((reach - 12) / 4));
+    forward += reachBonus * 2;
+    width += reachBonus * 3 + 8;
+    height += 1;
+
+    const left = dir > 0 ? (this.x - backward) : (this.x - forward);
+    return { x: left, y: this.y + yTop, w: width, h: height };
+  }
+
+  getKenjiSpriteAction() {
+    const atk = this.currentAttack || '';
+    const sp = this.getSpecialData();
+    switch (this.state) {
+      case STATES.IDLE:
+      case STATES.LANDING:
+      case STATES.THROW:
+        return 'idle';
+      case STATES.WALK_F:
+        return 'walk_f';
+      case STATES.WALK_B:
+        return 'walk_b';
+      case STATES.CROUCH:
+        return 'crouch';
+      case STATES.JUMP_RISE:
+      case STATES.JUMP_PEAK:
+      case STATES.JUMP_FALL:
+        return 'jump';
+      case STATES.STAND_ATTACK:
+      case STATES.CROUCH_ATTACK:
+      case STATES.JUMP_ATTACK:
+        if (atk.endsWith('P')) return (atk.endsWith('HP') || atk.endsWith('MP')) ? 'stand_hp' : 'stand_lp';
+        if (atk.endsWith('K')) return (atk.endsWith('HK') || atk.endsWith('MK')) ? 'stand_hk' : 'stand_lk';
+        return 'stand_lp';
+      case STATES.SPECIAL:
+        if (!sp) return 'stand_hp';
+        // FIX #34: Use dedicated special sprite actions when available.
+        if (sp.type === 'projectile') return 'hadou';
+        if (sp.type === 'antiAir') return 'shoryu';
+        if (sp.type === 'rapid') return 'stand_lk';
+        if (sp.type === 'advancing') return 'stand_hk';
+        if (sp.type === 'teleport') return 'idle';
+        return 'stand_hp';
+      case STATES.HITSTUN:
+        return 'hit';
+      case STATES.BLOCKSTUN:
+        return 'block';
+      case STATES.KNOCKDOWN:
+      case STATES.KO_FLY:
+      case STATES.THROWN:
+      case STATES.LOSE:
+      case STATES.GETUP:
+        return 'ko';
+      case STATES.WIN:
+        return 'win';
+      default:
+        return 'idle';
+    }
+  }
+
+  updateKenjiSpriteAction(action) {
+    if (this.spriteAction !== action) {
+      this.spriteAction = action;
+      this.spriteActionTime = 0;
+      this.spriteFrame = 1;
+    }
+  }
+
+  getKenjiSpriteFrame(action, count) {
+    if (count <= 1) return 1;
+    const cfgMap = CHAR_ANIM_CFG[this.charId] || CHAR_ANIM_CFG.kenji;
+    const cfg = cfgMap[action] || { frames:[1], fps:8, loop:true };
+    const seq = cfg.frames.map((n) => Math.max(1, Math.min(count, n)));
+    if (!seq.length) return 1;
+
+    if (action === 'jump') {
+      if (this.state === STATES.JUMP_RISE) return seq[0];
+      if (this.state === STATES.JUMP_PEAK) return seq[Math.min(1, seq.length - 1)];
+      return seq[Math.min(2, seq.length - 1)];
+    }
+    if (this.state === STATES.STAND_ATTACK || this.state === STATES.CROUCH_ATTACK ||
+        this.state === STATES.JUMP_ATTACK || this.state === STATES.SPECIAL) {
+      // FIX #61: Always prefer hadou frame 2 once startup has progressed.
+      if (action === 'hadou') {
+        if (this.attackPhase === 'startup') return seq[0];
+        return seq[Math.min(1, seq.length - 1)];
+      }
+      if (this.attackPhase === 'startup') return seq[0];
+      if (this.attackPhase === 'active') return seq[Math.max(0, Math.floor((seq.length - 1) * 0.5))];
+      if (this.attackPhase === 'recovery') return seq[seq.length - 1];
+      return seq[0];
+    }
+    if (action === 'ko') {
+      if (this.state === STATES.LOSE) return seq[seq.length - 1];
+      return this.koBounces > 0 ? seq[0] : seq[seq.length - 1];
+    }
+
+    const frameSpan = Math.max(1, Math.round(CFG.FPS / Math.max(1, cfg.fps)));
+    let idx = Math.floor(this.spriteActionTime / frameSpan);
+    if (cfg.loop) idx %= seq.length;
+    else idx = Math.min(seq.length - 1, idx);
+    return seq[idx];
+  }
+
+  renderKenjiSprite(ctx, dir) {
+    const spriteCharId = this.charId;
+    if (!SpriteStore.isReady(spriteCharId)) return false;
+    const action = this.getKenjiSpriteAction();
+    this.updateKenjiSpriteAction(action);
+    const frameCount = SpriteStore.count(spriteCharId, action);
+    if (!frameCount) return false;
+    const frame = this.getKenjiSpriteFrame(action, frameCount);
+    const sprite = SpriteStore.get(spriteCharId, action, frame);
+    if (!sprite.img || !sprite.trim) return false;
+    this.spriteFrame = frame;
+
+    const trim = sprite.trim;
+    // FIX #70: Scale all characters to 0.9x.
+    const baseHeightMap = { kenji: 77, vance: 77, meilin: 77 };
+    const baseHeight = baseHeightMap[spriteCharId] || 77;
+    const scaleByAction = action === 'crouch' ? 0.86 :
+                          action === 'jump' ? 1.03 :
+                          action === 'ko' ? 0.95 : 1.0;
+    const drawH = baseHeight * scaleByAction;
+    const drawW = drawH * (trim.w / trim.h);
+    const footX = (trim.footX / Math.max(1, trim.w)) * drawW;
+    const footY = (trim.footY / Math.max(1, trim.h)) * drawH;
+    // FIX #59: Push Kenji render position downward to reduce floating look.
+    // FIX #82: Lower imported sprites slightly to reduce floating look.
+    const groundOffsetMap = { kenji: 16, vance: 16, meilin: 16 };
+    const drawY = -footY + (groundOffsetMap[spriteCharId] || 16);
+
+    const drawOne = (img, sx, sy, sw, sh, alpha, offsetX, offsetY) => {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const baseX = -footX + offsetX;
+      // FIX #67: Use explicit transform mirror so 2P/right-side sprites always face opponent.
+      if (dir < 0) {
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, sx, sy, sw, sh, -(baseX + drawW), drawY + offsetY, drawW, drawH);
+      } else {
+        ctx.drawImage(img, sx, sy, sw, sh, baseX, drawY + offsetY, drawW, drawH);
+      }
+      ctx.restore();
+    };
+
+    // FIX #30: Add depth shadow and smear trails for high-quality kenji sprite rendering.
+    ctx.save();
+    ctx.globalAlpha = 0.24;
+    ctx.fillStyle = '#000000';
+    ctx.translate(0, -1);
+    ctx.scale(1, 0.32);
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(3, drawW * 0.28), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    if ((action === 'stand_hp' || action === 'stand_hk') && this.attackPhase === 'active') {
+      const prevFrame = Math.max(1, frame - 1);
+      const prev = SpriteStore.get(spriteCharId, action, prevFrame);
+      if (prev.img && prev.trim) {
+        drawOne(prev.img, prev.trim.x, prev.trim.y, prev.trim.w, prev.trim.h, 0.25, dir * -1.8, 0);
+      }
+    }
+
+    // FIX #29: Render kenji from PNG sprites with automatic alpha-trim anchoring.
+    drawOne(sprite.img, trim.x, trim.y, trim.w, trim.h, 1, 0, 0);
+
+    // FIX #60: Remove translucent strong-attack rectangle artifact.
+    // FIX #62: Remove translucent hit/block rectangles around Kenji sprite.
+
+    if (GAME.DEBUG) {
+      drawText(ctx, `${action}:${String(frame).padStart(2, '0')}`, 0, -drawH - 6, 2.8, '#88FFAA', 'center', false);
+    }
+    return true;
+  }
+
+  updateAttack() {
+    const atk = this.getAttackData();
+    if (!atk) { this.returnToIdle(); return; }
+    this.attackFrame++;
+    const sp = this.getSpecialData();
+
+    // FIX #2: Normalize unknown attack phases so attacks always progress to recovery/idle.
+    if (this.attackPhase === 'none') {
+      this.attackPhase = 'startup';
+      this.attackFrame = 0;
+    }
+    if (this.attackPhase !== 'startup' && this.attackPhase !== 'active' && this.attackPhase !== 'recovery') {
+      this.attackPhase = 'recovery';
+      this.attackFrame = 0;
+      this.hitBox = null;
+      this.hasHitThisAttack = true;
+    }
+
+    if (this.attackPhase === 'startup') {
+      if (sp && sp.type === 'antiAir' && atk.invStart !== undefined) {
+        if (this.attackFrame >= atk.invStart && this.attackFrame <= (atk.invEnd || atk.invStart + 5)) {
+          this.invincibleFrames = 2;
+        }
+      }
+      if (this.attackFrame >= atk.startup) {
+        this.attackPhase = 'active';
+        this.attackFrame = 0;
+        if (sp && sp.type === 'projectile') {
+          const proj = projectiles[this.pi];
+          if (!proj.active) {
+            const px = this.x + (this.facingRight ? 8 : -8);
+            const py = this.y - 12; // FIX #27
+            proj.fire(px, py, atk.projSpeed, atk.damage, this.pi, this.facingRight, this.charId); // FIX #14
+          }
+          this.projectilePoseFrames = 7; // FIX #46
+          this.attackPhase = 'recovery';
+          this.attackFrame = 0;
+          this.hitBox = null;
+          this.hasHitThisAttack = true;
+        }
+        if (sp && sp.type === 'antiAir' && atk.riseV) {
+          this.vy = atk.riseV;
+          this.y -= 1;
+        }
+        if (sp && sp.type === 'teleport') {
+          this.x += atk.distance * (this.facingRight ? 1 : -1);
+          // FIX #75: Teleport also respects edge-safe sprite clamp.
+          const edgePad = Math.max(this.pushW / 2, CFG.CHAR_EDGE_PADDING);
+          this.x = clamp(this.x, edgePad, CFG.STAGE_W - edgePad);
+          this.invincibleFrames = 8;
+          this.attackPhase = 'recovery';
+          this.attackFrame = 0;
+        }
+      }
+    } else if (this.attackPhase === 'active') {
+      const activeFrames = atk.active || 4;
+      const reach = (this.currentAttack && this.data.normals[this.currentAttack]) ?
+                    (this.data.normals[this.currentAttack].reach || 12) : 12;
+      const dir = this.facingRight ? 1 : -1;
+      const hbx = this.x + dir * (reach > 20 ? reach / CFG.SCALE : 4);
+
+      if (sp && sp.type === 'projectile') {
+        // FIX #2: Projectile specials should never keep an active hitbox alive.
+        this.hitBox = null;
+        this.attackPhase = 'recovery';
+        this.attackFrame = 0;
+        this.hasHitThisAttack = true;
+        return;
+      }
+
+      if (sp && (sp.type === 'advancing' || sp.type === 'rapid')) {
+        if (atk.advSpeed) this.x += (this.facingRight ? 1 : -1) * atk.advSpeed * 0.3;
+        if (atk.hits && this.specialHitTimer <= 0 && this.specialHitCount < atk.hits) {
+          this.hitBox = { x: hbx - 5, y: this.y - 16, w: 12, h: 13 };
+          this.specialHitTimer = Math.max(2, Math.floor(activeFrames / (atk.hits || 1)));
+        } else {
+          this.hitBox = null;
+        }
+        this.specialHitTimer--;
+        if (this.attackFrame >= activeFrames * (atk.hits || 1)) {
+          this.attackPhase = 'recovery';
+          this.attackFrame = 0;
+          this.hitBox = null;
+        }
+      } else if (sp && sp.type === 'melee') {
+        this.hitBox = { x: hbx - 7, y: this.y - 18, w: 16, h: 16 };
+        if (atk.hits && this.specialHitTimer <= 0 && this.specialHitCount < atk.hits) {
+          this.specialHitTimer = Math.floor(activeFrames / atk.hits);
+          this.hasHitThisAttack = false;
+        }
+        this.specialHitTimer--;
+        if (this.attackFrame >= activeFrames) {
+          this.attackPhase = 'recovery';
+          this.attackFrame = 0;
+          this.hitBox = null;
+        }
+      } else {
+        if (!this.hasHitThisAttack) {
+          this.hitBox = this.getNormalHitbox(dir, reach);
+        } else {
+          this.hitBox = null;
+        }
+        if (this.attackFrame >= activeFrames) {
+          this.attackPhase = 'recovery';
+          this.attackFrame = 0;
+          this.hitBox = null;
+        }
+      }
+
+      if (sp && sp.type === 'antiAir' && atk.riseV) {
+        this.vy += CFG.GRAVITY * 0.3;
+      }
+    } else if (this.attackPhase === 'recovery') {
+      this.hitBox = null;
+      const recovFrames = atk.recovery || 15;
+      if (this.attackFrame >= recovFrames) {
+        this.returnToIdle();
+      }
+    } else {
+      // FIX #2: Final fallback keeps attack finite even when phase desync occurs.
+      this.attackPhase = 'recovery';
+      this.attackFrame = 0;
+      this.hitBox = null;
+    }
+  }
+
+  returnToIdle() {
+    // FIX #1: Exhaustive return path for all action states to prevent AI deadlocks.
+    const prevState = this.state;
+    if (this.hp <= 0) {
+      this.state = STATES.LOSE;
+    } else if (this.isOnGround()) {
+      this.state = STATES.IDLE;
+      if (prevState === STATES.CROUCH || prevState === STATES.CROUCH_ATTACK) {
+        this.state = STATES.CROUCH;
+      }
+    } else {
+      this.state = STATES.JUMP_FALL;
+    }
+    this.attackPhase = 'none';
+    this.attackFrame = 0;
+    this.currentAttack = null;
+    this.currentSpecial = null;
+    this.specialVersion = null;
+    this.hitBox = null;
+    this.hasHitThisAttack = false;
+    this.specialHitCount = 0;
+    this.specialHitTimer = 0;
+    this.projectilePoseFrames = 0;
+  }
+
+  update() {
+    this.animTimer++;
+    if (this.animTimer >= 8) { this.animTimer = 0; this.animFrame++; }
+    if (this.charId === 'kenji') this.spriteActionTime++;
+    if (this.projectilePoseFrames > 0) this.projectilePoseFrames--;
+
+    if (this.invincibleFrames > 0) this.invincibleFrames--;
+    if (this.throwEscapeWindow > 0) this.throwEscapeWindow--;
+    if (this.comboTimer > 0) { this.comboTimer--; if (this.comboTimer <= 0) this.comboCount = 0; }
+    if (this.hitConfirmFrames > 0) this.hitConfirmFrames--;
+
+    this.displayHp = lerp(this.displayHp, this.hp, 0.08);
+
+    this.hurtBox = { x: this.x - this.pushW/2, y: this.y - this.pushH, w: this.pushW, h: this.pushH };
+
+    switch (this.state) {
+      case STATES.HITSTUN:
+        this.hitstunFrames--;
+        this.x += this.knockbackVx;
+        this.knockbackVx *= 0.85;
+        if (this.hitstunFrames <= 0) this.state = STATES.IDLE;
+        break;
+      case STATES.BLOCKSTUN:
+        this.blockstunFrames--;
+        this.x += this.knockbackVx;
+        this.knockbackVx *= 0.85;
+        if (this.blockstunFrames <= 0) this.state = STATES.IDLE;
+        break;
+      case STATES.KNOCKDOWN:
+        this.vy += CFG.GRAVITY * 0.15;
+        this.y += this.vy;
+        this.x += this.knockbackVx;
+        this.knockbackVx *= 0.9;
+        if (this.y >= CFG.GROUND_Y) {
+          this.y = CFG.GROUND_Y;
+          this.vy = 0;
+          this.stateTimer--;
+          if (this.stateTimer <= 0) {
+            this.state = STATES.GETUP;
+            this.stateTimer = CFG.WAKEUP_INVINCIBLE;
+            this.invincibleFrames = CFG.WAKEUP_INVINCIBLE;
+          }
+        }
+        break;
+      case STATES.KO_FLY:
+        this.vy += CFG.GRAVITY * 0.16;
+        this.y += this.vy;
+        this.x += this.koVx;
+        this.koVx *= 0.985;
+        if (this.y >= CFG.GROUND_Y) {
+          this.y = CFG.GROUND_Y;
+          if (this.koBounces > 0) {
+            this.koBounces--;
+            this.vy = -Math.max(1.3, Math.abs(this.vy) * 0.45);
+            this.koVx *= 0.6;
+          } else {
+            this.vy = 0;
+            this.koVx = 0;
+            this.state = STATES.LOSE;
+          }
+        }
+        break;
+      case STATES.GETUP:
+        this.stateTimer--;
+        if (this.stateTimer <= 0) this.state = STATES.IDLE;
+        break;
+      case STATES.JUMP_RISE:
+      case STATES.JUMP_PEAK:
+      case STATES.JUMP_FALL:
+        this.vy += CFG.GRAVITY * 0.1;
+        this.y += this.vy;
+        this.x += this.jumpVx;
+        if (this.vy >= 0 && this.state === STATES.JUMP_RISE) this.state = STATES.JUMP_PEAK;
+        if (this.vy > 0.5) this.state = STATES.JUMP_FALL;
+        if (this.y >= CFG.GROUND_Y) {
+          this.y = CFG.GROUND_Y; this.vy = 0; this.jumpVx = 0;
+          this.state = STATES.LANDING; this.stateTimer = CFG.LANDING_FRAMES;
+          this.airAttackUsed = false;
+          this.hitBox = null;
+          this.returnToIdle();
+        }
+        break;
+      case STATES.LANDING:
+        this.stateTimer--;
+        if (this.stateTimer <= 0) { this.state = STATES.IDLE; }
+        break;
+      case STATES.STAND_ATTACK:
+      case STATES.CROUCH_ATTACK:
+      case STATES.JUMP_ATTACK:
+      case STATES.SPECIAL:
+        this.updateAttack();
+        // FIX #84: Apply airborne special landing logic only while actually airborne.
+        if (this.state === STATES.JUMP_ATTACK || (this.state === STATES.SPECIAL && !this.isOnGround())) {
+          this.vy += CFG.GRAVITY * 0.1;
+          this.y += this.vy;
+          this.x += this.jumpVx;
+          if (this.y >= CFG.GROUND_Y) {
+            this.y = CFG.GROUND_Y; this.vy = 0; this.jumpVx = 0;
+            if (this.state === STATES.JUMP_ATTACK || this.attackPhase === 'recovery') {
+              this.returnToIdle();
+            }
+          }
+        }
+        break;
+      case STATES.THROWN:
+        this.stateTimer--;
+        if (this.stateTimer <= 0) this.applyKnockdown();
+        break;
+      case STATES.THROW:
+        this.stateTimer--;
+        if (this.stateTimer <= 0) this.state = STATES.IDLE;
+        break;
+      case STATES.WIN:
+      case STATES.LOSE:
+        break;
+    }
+
+    // FIX #75: Final per-frame clamp keeps sprite inside viewport at both stage ends.
+    const edgePad = Math.max(this.pushW / 2, CFG.CHAR_EDGE_PADDING);
+    this.x = clamp(this.x, edgePad, CFG.STAGE_W - edgePad);
+  }
+
+  render(ctx, camOff) {
+    const ox = camOff.x, oy = camOff.y;
+    const renderGroundOffset = 8; // FIX #59
+    const sx = Math.round(this.x + ox);
+    const sy = Math.round(this.y + oy + renderGroundOffset);
+    const dir = this.facingRight ? 1 : -1;
+
+    if (this.invincibleFrames > 0 && this.invincibleFrames % 2 === 0) return;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    // FIX #64: Use imported sprite rendering for active sprite characters.
+    if ((this.charId === 'kenji' || this.charId === 'vance' || this.charId === 'meilin') && this.renderKenjiSprite(ctx, dir)) {
+      ctx.restore();
+
+      // FIX #37: Keep collision debug boxes hidden unless explicitly enabled.
+      if (GAME.DEBUG && GAME.SHOW_HITBOXES) {
+        if (this.hurtBox) {
+          ctx.strokeStyle = 'rgba(0,100,255,0.7)';
+          ctx.strokeRect(this.hurtBox.x + ox, this.hurtBox.y + oy, this.hurtBox.w, this.hurtBox.h);
+        }
+        if (this.hitBox) {
+          ctx.strokeStyle = 'rgba(255,0,0,0.7)';
+          ctx.strokeRect(this.hitBox.x + ox, this.hitBox.y + oy, this.hitBox.w, this.hitBox.h);
+        }
+        ctx.strokeStyle = 'rgba(255,255,0,0.5)';
+        ctx.strokeRect(this.x - this.pushW/2 + ox, this.y - this.pushH + oy, this.pushW, this.pushH);
+      }
+      return;
+    }
+    // FIX #70: Scale fallback fighters to 0.9x of previous values.
+    const scaleMap = { kenji: 2.11, vance: 2.21, meilin: 2.05, sagar: 2.16 };
+    const spriteScale = scaleMap[this.charId] || 2.11;
+    ctx.scale(spriteScale, spriteScale);
+
+    const pal = this.pal;
+    const profileMap = {
+      // FIX #11: Character-specific body proportions to strengthen silhouette differences.
+      kenji: { torsoW:9, torsoH:9, headW:5, headH:6, armLen:6, legLen:5, hipSpread:2 },
+      vance: { torsoW:11, torsoH:10, headW:6, headH:7, armLen:7, legLen:6, hipSpread:3 },
+      meilin: { torsoW:8, torsoH:8, headW:5, headH:6, armLen:5, legLen:5, hipSpread:2 },
+      sagar: { torsoW:10, torsoH:10, headW:5, headH:7, armLen:7, legLen:6, hipSpread:2 }
+    };
+    const body = profileMap[this.charId] || profileMap.kenji;
+    const atkData = this.getAttackData();
+    // FIX #12: Sagar gets visible limb stretch during long reach attacks.
+    const sagarStretch = this.charId === 'sagar' && atkData ? Math.max(0, Math.floor(((atkData.reach || 24) - 28) / 5)) : 0;
+
+    const drawLimb = (x, y, len, h) => {
+      if (len >= 0) ctx.fillRect(x, y, len, h);
+      else ctx.fillRect(x + len, y, -len, h);
+    };
+
+    const drawBody = (headY, bodyY, bodyH, armAngle, legAngle, armExt, legExt) => {
+      const torsoW = body.torsoW;
+      const torsoH = Math.max(6, Math.round(bodyH || body.torsoH));
+      const torsoX = -Math.floor(torsoW / 2);
+
+      ctx.fillStyle = pal.outline;
+      ctx.fillRect(torsoX - 1, bodyY - 1, torsoW + 2, torsoH + 2);
+      ctx.fillStyle = pal.main;
+      ctx.fillRect(torsoX, bodyY, torsoW, torsoH);
+
+      const headW = body.headW;
+      const headH = body.headH;
+      ctx.fillStyle = pal.outline;
+      ctx.fillRect(-Math.floor(headW / 2) - 1, headY - 1, headW + 2, headH + 2);
+      ctx.fillStyle = pal.skin;
+      ctx.fillRect(-Math.floor(headW / 2), headY, headW, headH);
+
+      if (pal.hair) {
+        ctx.fillStyle = pal.hair;
+        ctx.fillRect(-Math.floor(headW / 2), headY, headW, Math.max(2, Math.floor(headH / 3)));
+      }
+      if (this.charId === 'kenji') {
+        ctx.fillStyle = pal.sub;
+        ctx.fillRect(-Math.floor(headW / 2) - 1, headY + 1, headW + 2, 1);
+      }
+      if (this.charId === 'vance') {
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(-2, headY + 2, 4, 2);
+      }
+      if (this.charId === 'meilin') {
+        ctx.fillStyle = pal.hair || '#111111';
+        ctx.fillRect(1, headY - 2, 2, 2);
+      }
+      if (this.charId === 'sagar') {
+        ctx.fillStyle = pal.sub;
+        ctx.fillRect(-3, headY + 1, 2, 3);
+        ctx.fillRect(1, headY + 1, 2, 3);
+      }
+
+      ctx.fillStyle = pal.skin;
+      const shoulderX = dir * (Math.floor(torsoW / 2) + 1);
+      const armLen = body.armLen + armExt + sagarStretch;
+      drawLimb(shoulderX, bodyY + 2 + armAngle, dir * armLen, 2);
+      drawLimb(shoulderX, bodyY + 5 - Math.floor(armAngle * 0.5), dir * Math.max(3, armLen - 2), 2);
+
+      const hipY = bodyY + torsoH;
+      const legLen = body.legLen + legExt + (this.currentAttack && this.currentAttack.includes('K') ? sagarStretch : 0);
+      const frontLegX = dir * (body.hipSpread + 1);
+      const backLegX = -dir * body.hipSpread;
+      ctx.fillRect(frontLegX - 1, hipY + legAngle, 3, legLen);
+      ctx.fillRect(backLegX - 1, hipY - legAngle, 3, Math.max(4, legLen - 1));
+
+      if (this.charId === 'kenji') {
+        ctx.fillStyle = pal.sub;
+        ctx.fillRect(-Math.floor(torsoW / 2), bodyY + Math.floor(torsoH * 0.5), torsoW, 2);
+      }
+      if (this.charId === 'vance') {
+        ctx.fillStyle = pal.sub;
+        ctx.fillRect(-Math.floor(torsoW / 2), bodyY + torsoH - 2, torsoW, 2);
+      }
+    };
+    const drawForwardKick = (y, len, thick, glow) => {
+      // FIX #26: Draw forward-extending leg shape so kick impact area is readable.
+      const left = dir > 0 ? 4 : (-4 - len);
+      ctx.fillStyle = pal.skin;
+      ctx.fillRect(left, y, len, thick);
+      if (glow > 0) {
+        ctx.fillStyle = `rgba(255,220,120,${glow})`;
+        ctx.fillRect(left + (dir > 0 ? len - 2 : -2), y - 1, 3, thick + 2);
+      }
+    };
+
+    switch (this.state) {
+      case STATES.IDLE:
+      case STATES.LANDING: {
+        const bob = Math.sin(this.animFrame * 0.5) * 0.5;
+        drawBody(-22 + bob, -15 + bob, body.torsoH, 0, 0, 0, 0);
+        break;
+      }
+      case STATES.WALK_F:
+      case STATES.WALK_B: {
+        const step = Math.sin(this.animFrame * 0.8) * 2.4;
+        drawBody(-22, -15, body.torsoH, step * 0.5, step, 1, 1);
+        break;
+      }
+      case STATES.CROUCH: {
+        drawBody(-17, -11, body.torsoH - 2, 1, 2, 1, 1);
+        break;
+      }
+      case STATES.JUMP_RISE:
+      case STATES.JUMP_PEAK:
+      case STATES.JUMP_FALL: {
+        drawBody(-22, -15, body.torsoH, -2, -2, 1, 1);
+        break;
+      }
+      case STATES.STAND_ATTACK: {
+        // FIX #24: Distinct visuals for LP/MP/HP and LK/MK/HK.
+        const atk = this.currentAttack || '';
+        const phaseBoost = this.attackPhase === 'active' ? 2 : (this.attackPhase === 'startup' ? 1 : 0);
+        if (atk.endsWith('LP')) {
+          drawBody(-22, -15, body.torsoH, 4 + phaseBoost, 0, 4 + phaseBoost, 1);
+        } else if (atk.endsWith('MP')) {
+          drawBody(-22, -15, body.torsoH, 6 + phaseBoost, 1, 6 + phaseBoost, 1);
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.fillRect(dir * 10, -10, dir * 3, 2);
+        } else if (atk.endsWith('HP')) {
+          ctx.save();
+          ctx.rotate(dir * -0.08);
+          drawBody(-22, -15, body.torsoH, 8 + phaseBoost, 2, 9 + phaseBoost, 2);
+          ctx.restore();
+          ctx.fillStyle = 'rgba(255,220,120,0.55)';
+          ctx.fillRect(dir * 10, -12, dir * 5, 3);
+        } else if (atk.endsWith('LK')) {
+          drawBody(-22, -15, body.torsoH, 1, 2 + phaseBoost, 1, 4 + phaseBoost);
+          drawForwardKick(-6, 8 + phaseBoost, 2, 0.25);
+        } else if (atk.endsWith('MK')) {
+          drawBody(-22, -15, body.torsoH, 1, 3 + phaseBoost, 2, 6 + phaseBoost);
+          drawForwardKick(-6, 11 + phaseBoost, 2, 0.35);
+        } else {
+          ctx.save();
+          ctx.rotate(dir * 0.08);
+          drawBody(-22, -15, body.torsoH, 0, 4 + phaseBoost, 2, 9 + phaseBoost);
+          ctx.restore();
+          drawForwardKick(-7, 14 + phaseBoost, 3, 0.45);
+        }
+        break;
+      }
+      case STATES.CROUCH_ATTACK: {
+        const atk = this.currentAttack || '';
+        const phaseBoost = this.attackPhase === 'active' ? 2 : (this.attackPhase === 'startup' ? 1 : 0);
+        if (atk.endsWith('LP')) {
+          drawBody(-17, -11, body.torsoH - 2, 3 + phaseBoost, 1, 3 + phaseBoost, 1);
+        } else if (atk.endsWith('MP')) {
+          drawBody(-17, -11, body.torsoH - 2, 5 + phaseBoost, 1, 5 + phaseBoost, 1);
+        } else if (atk.endsWith('HP')) {
+          drawBody(-17, -11, body.torsoH - 2, 7 + phaseBoost, 1, 7 + phaseBoost, 1);
+          ctx.fillStyle = 'rgba(255,210,120,0.5)';
+          ctx.fillRect(dir * 9, -9, dir * 4, 2);
+        } else if (atk.endsWith('LK')) {
+          drawBody(-17, -11, body.torsoH - 2, 0, 2 + phaseBoost, 1, 5 + phaseBoost);
+          drawForwardKick(-2, 9 + phaseBoost, 2, 0.2);
+        } else if (atk.endsWith('MK')) {
+          drawBody(-17, -11, body.torsoH - 2, 0, 3 + phaseBoost, 1, 7 + phaseBoost);
+          drawForwardKick(-2, 12 + phaseBoost, 2, 0.3);
+        } else {
+          drawBody(-17, -11, body.torsoH - 2, 0, 4 + phaseBoost, 2, 9 + phaseBoost);
+          drawForwardKick(-2, 15 + phaseBoost, 3, 0.4);
+        }
+        break;
+      }
+      case STATES.JUMP_ATTACK: {
+        const atk = this.currentAttack || '';
+        const phaseBoost = this.attackPhase === 'active' ? 2 : (this.attackPhase === 'startup' ? 1 : 0);
+        if (atk.endsWith('P')) {
+          const arm = atk.endsWith('HP') ? 8 : (atk.endsWith('MP') ? 6 : 4);
+          drawBody(-22, -15, body.torsoH, arm + phaseBoost, 2, arm + phaseBoost, 2);
+        } else {
+          const leg = atk.endsWith('HK') ? 8 : (atk.endsWith('MK') ? 6 : 4);
+          drawBody(-22, -15, body.torsoH, 2, 2 + phaseBoost, 2, leg + phaseBoost);
+          drawForwardKick(-9, 9 + leg + phaseBoost, 3, atk.endsWith('HK') ? 0.45 : 0.3);
+        }
+        break;
+      }
+      case STATES.SPECIAL: {
+        const sp = this.getSpecialData();
+        if (sp && (sp.type === 'antiAir')) {
+          ctx.save();
+          ctx.rotate(dir * (this.attackFrame * 0.3));
+          drawBody(-22, -15, body.torsoH, 5, -3, 7, 1);
+          ctx.restore();
+        } else if (sp && sp.type === 'advancing') {
+          ctx.save();
+          ctx.rotate(dir * (this.attackFrame * 0.5));
+          drawBody(-22, -15, body.torsoH, 4, 3, 4, 4);
+          ctx.restore();
+        } else if (sp && sp.type === 'projectile') {
+          const ext = this.attackPhase === 'startup' ? 3 : 5;
+          drawBody(-22, -15, body.torsoH, ext, 0, ext, 1);
+        } else if (sp && sp.type === 'teleport') {
+          ctx.globalAlpha = 0.5;
+          drawBody(-22, -15, body.torsoH, 0, 0, 1, 1);
+          ctx.globalAlpha = 1;
+        } else if (sp && sp.type === 'rapid') {
+          const ext = (this.attackFrame % 4 < 2) ? 5 : 2;
+          drawBody(-22, -15, body.torsoH, 1, ext, 2, ext);
+        } else if (sp && sp.type === 'melee') {
+          const ext = this.attackPhase === 'active' ? 6 : 3;
+          drawBody(-22, -15, body.torsoH, ext, 0, ext, 1);
+          if (this.attackPhase === 'active') {
+            ctx.fillStyle = '#FF8800';
+            ctx.globalAlpha = 0.6;
+            ctx.fillRect(dir * 8, -16, dir * 10, 12);
+            ctx.globalAlpha = 1;
+          }
+        } else {
+          drawBody(-22, -15, body.torsoH, 3, 0, 3, 1);
+        }
+        break;
+      }
+      case STATES.HITSTUN: {
+        ctx.save();
+        ctx.translate(1, 0);
+        drawBody(-21, -14, body.torsoH, -2, -1, 1, 1);
+        ctx.restore();
+        break;
+      }
+      case STATES.BLOCKSTUN: {
+        drawBody(-21, -14, body.torsoH, 3, 1, 2, 1);
+        break;
+      }
+      case STATES.KNOCKDOWN: {
+        ctx.save();
+        const rot = Math.min(this.stateTimer * 0.1, Math.PI / 2);
+        ctx.rotate(dir * rot);
+        drawBody(-22, -15, body.torsoH, -1, -1, 1, 1);
+        ctx.restore();
+        break;
+      }
+      case STATES.KO_FLY: {
+        ctx.save();
+        const spin = clamp(this.koVx * 0.35 + this.vy * 0.1, -1.2, 1.2);
+        ctx.rotate(spin);
+        drawBody(-21, -14, body.torsoH, -4, -3, 1, 1);
+        ctx.restore();
+        break;
+      }
+      case STATES.GETUP: {
+        const t = this.stateTimer / CFG.WAKEUP_INVINCIBLE;
+        ctx.globalAlpha = 0.5 + t * 0.5;
+        drawBody(-17 - t * 5, -11 - t * 4, body.torsoH - 2 + t * 2, 0, 0, 1, 1);
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case STATES.THROWN: {
+        ctx.save();
+        ctx.rotate(dir * 0.5);
+        drawBody(-21, -14, body.torsoH, -3, -2, 1, 1);
+        ctx.restore();
+        break;
+      }
+      case STATES.WIN: {
+        // FIX #16: Character-specific victory poses.
+        if (this.charId === 'kenji') {
+          const pump = Math.sin(this.animFrame * 0.3) * 1.5;
+          drawBody(-24 + pump, -17 + pump, body.torsoH, -6, 0, 7, 1);
+        } else if (this.charId === 'vance') {
+          drawBody(-22, -15, body.torsoH, -3, 0, 4, 1);
+          ctx.fillStyle = '#FFD700';
+          ctx.fillRect(dir * 3, -21, 2, 4);
+        } else if (this.charId === 'meilin') {
+          const sway = Math.sin(this.animFrame * 0.35) * 2;
+          drawBody(-23, -16, body.torsoH, 2, sway, 3, 4);
+        } else {
+          drawBody(-22, -15, body.torsoH, 0, 0, 4, 1);
+          ctx.fillStyle = '#FFAA44';
+          ctx.globalAlpha = 0.5;
+          ctx.fillRect(-3, -22, 6, 2);
+          ctx.globalAlpha = 1;
+        }
+        break;
+      }
+      case STATES.LOSE: {
+        ctx.globalAlpha = 0.7;
+        drawBody(-8, -6, body.torsoH - 2, 2, 3, 1, 1);
+        ctx.globalAlpha = 1;
+        break;
+      }
+      default:
+        drawBody(-22, -15, body.torsoH, 0, 0, 1, 1);
+    }
+
+    ctx.restore();
+
+    // FIX #37: Keep collision debug boxes hidden unless explicitly enabled.
+    if (GAME.DEBUG && GAME.SHOW_HITBOXES) {
+      if (this.hurtBox) {
+        ctx.strokeStyle = 'rgba(0,100,255,0.7)';
+        ctx.strokeRect(this.hurtBox.x + ox, this.hurtBox.y + oy, this.hurtBox.w, this.hurtBox.h);
+      }
+      if (this.hitBox) {
+        ctx.strokeStyle = 'rgba(255,0,0,0.7)';
+        ctx.strokeRect(this.hitBox.x + ox, this.hitBox.y + oy, this.hitBox.w, this.hitBox.h);
+      }
+      ctx.strokeStyle = 'rgba(255,255,0,0.5)';
+      ctx.strokeRect(this.x - this.pushW/2 + ox, this.y - this.pushH + oy, this.pushW, this.pushH);
+    }
+  }
+}
+
+/* ===== SECTION 8: AI ===== */
+
+class CPUController {
+  constructor(difficulty) {
+    this.diff = AI_DATA[difficulty] || AI_DATA.normal;
+    this.actionTimer = 0;
+    this.currentAction = null;
+    this.reactionBuffer = [];
+  }
+
+  reset() {
+    this.actionTimer = 0;
+    this.currentAction = null;
+    this.reactionBuffer = [];
+  }
+
+  update(cpu, player, input) {
+    if (cpu.hp <= 0) return;
+    const dist = Math.abs(cpu.x - player.x);
+    const inAir = cpu.state === STATES.JUMP_RISE || cpu.state === STATES.JUMP_FALL || cpu.state === STATES.JUMP_PEAK;
+    const playerCornered = player.x < 24 || player.x > CFG.STAGE_W - 24;
+    const playerWakeup = player.state === STATES.KNOCKDOWN || player.state === STATES.GETUP;
+
+    // FIX #10: Hit-confirmed combo extension by CPU during recovery windows.
+    if (cpu.isInAttack() && cpu.attackPhase === 'recovery' && player.state === STATES.HITSTUN &&
+        Math.random() < this.diff.comboRate) {
+      this.continueCombo(cpu);
+      return;
+    }
+
+    if (!cpu.canAct() && !inAir) return;
+
+    if (inAir) {
+      if (!cpu.airAttackUsed && dist < 35 && Math.random() < 0.35) {
+        const atkName = Math.random() < 0.5 ? 'jumpHK' : 'jumpMK';
+        if (cpu.data.normals[atkName]) { cpu.startAttack(atkName, false); cpu.airAttackUsed = true; }
+      }
+      return;
+    }
+
+    this.actionTimer--;
+    if (this.actionTimer > 0) return;
+    this.actionTimer = this.diff.reactionDelay + randInt(0, 5);
+
+    if (playerWakeup && dist < 45) {
+      this.doWakeupPressure(cpu, player);
+      return;
+    }
+    if (playerCornered && dist < 50) {
+      this.doCornerPressure(cpu, player, dist);
+      return;
+    }
+
+    if (player.isInAttack() && Math.random() < this.diff.guardRate) {
+      if (player.y < CFG.GROUND_Y - 5 && Math.random() < this.diff.antiAirRate) {
+        this.doAntiAirDirect(cpu);
+        return;
+      }
+      this.doBlockDirect(cpu, input);
+      return;
+    }
+
+    if (dist > 60) {
+      const r = Math.random();
+      if (r < this.diff.specialRate * 0.5) {
+        this.doProjectileDirect(cpu);
+      } else if (r < this.diff.specialRate * 0.5 + 0.15) {
+        this.doJumpForward(cpu);
+      } else {
+        cpu.state = STATES.WALK_F;
+        cpu.x += cpu.data.walkF * 3;
+      }
+    } else if (dist > 25) {
+      const r = Math.random();
+      if (r < this.diff.specialRate * 0.3) {
+        this.doSpecialDirect(cpu);
+      } else if (r < this.diff.randomRate + 0.3) {
+        this.doNormalDirect(cpu, false);
+      } else {
+        cpu.state = Math.random() < 0.5 ? STATES.WALK_F : STATES.WALK_B;
+        cpu.x += (cpu.state === STATES.WALK_F ? cpu.data.walkF : -cpu.data.walkB) * 2;
+      }
+    } else {
+      const r = Math.random();
+      if (r < this.diff.throwRate) {
+        cpu.state = STATES.THROW;
+        cpu.stateTimer = 15;
+      } else if (r < this.diff.comboRate * 0.5 + this.diff.throwRate) {
+        this.doComboDirect(cpu);
+      } else {
+        this.doNormalDirect(cpu, true);
+      }
+    }
+  }
+
+  doBlockDirect(cpu, input) {
+    input.keys[KEYS.GUARD] = true; // FIX #28
+    if (Math.random() < 0.5) input.keys[KEYS.DOWN] = true;
+    setTimeout(() => { input.keys[KEYS.GUARD] = false; input.keys[KEYS.DOWN] = false; }, 400);
+  }
+
+  doNormalDirect(cpu, close) {
+    const attacks = close ?
+      ['standLP','standMP','standLK','standMK','crouchLK','crouchMK'] :
+      ['standMP','standHP','standMK','standHK','crouchMK','crouchHK'];
+    const atk = attacks[randInt(0, attacks.length - 1)];
+    const isCrouch = atk.startsWith('crouch');
+    if (cpu.data.normals[atk]) cpu.startAttack(atk, isCrouch);
+  }
+
+  doComboDirect(cpu) {
+    if (cpu.data.normals.standLP) cpu.startAttack('standLP', false);
+  }
+
+  continueCombo(cpu) {
+    // FIX #10: Light->Medium->Heavy chain route, then special finisher.
+    const strength = cpu.getCurrentAttackStrength();
+    if (strength === 'L') {
+      if (cpu.data.normals.standMP) cpu.startAttack('standMP', false);
+      else this.doNormalDirect(cpu, true);
+      return;
+    }
+    if (strength === 'M') {
+      if (cpu.data.normals.standHP) cpu.startAttack('standHP', false);
+      else this.doNormalDirect(cpu, true);
+      return;
+    }
+    if (Math.random() < this.diff.specialRate) {
+      this.doSpecialDirect(cpu);
+    } else {
+      this.doNormalDirect(cpu, true);
+    }
+  }
+
+  doProjectileDirect(cpu) {
+    if (this.doChargeSpecialDirect(cpu, 'projectile')) return; // FIX #8
+    const specials = cpu.data.specials;
+    for (let name in specials) {
+      if (specials[name].type === 'projectile') {
+        cpu.startSpecial(name, 'M');
+        return;
+      }
+    }
+    this.doNormalDirect(cpu, false);
+  }
+
+  doSpecialDirect(cpu) {
+    const specials = cpu.data.specials;
+    const names = Object.keys(specials).filter(n => specials[n].type !== 'teleport');
+    if (names.length > 0) {
+      const name = names[randInt(0, names.length - 1)];
+      const versions = Object.keys(specials[name].versions);
+      cpu.startSpecial(name, versions[randInt(0, versions.length - 1)]);
+    } else {
+      this.doNormalDirect(cpu, false);
+    }
+  }
+
+  doAntiAirDirect(cpu) {
+    if (this.doChargeSpecialDirect(cpu, 'antiAir')) return; // FIX #8
+    const specials = cpu.data.specials;
+    for (let name in specials) {
+      if (specials[name].type === 'antiAir') {
+        cpu.startSpecial(name, 'H');
+        return;
+      }
+    }
+    if (cpu.data.normals.standHP) cpu.startAttack('standHP', false);
+  }
+
+  doChargeSpecialDirect(cpu, preferredType) {
+    const specials = cpu.data.specials;
+    const chargeNames = Object.keys(specials).filter((name) => {
+      const sp = specials[name];
+      return typeof sp.command === 'string' && sp.command.startsWith('charge') &&
+             (!preferredType || sp.type === preferredType);
+    });
+    if (!chargeNames.length) return false;
+    const name = chargeNames[randInt(0, chargeNames.length - 1)];
+    const versions = Object.keys(specials[name].versions);
+    cpu.startSpecial(name, versions[randInt(0, versions.length - 1)]);
+    return true;
+  }
+
+  doWakeupPressure(cpu, player) {
+    // FIX #10: Basic oki pressure loop.
+    const dist = Math.abs(cpu.x - player.x);
+    if (dist > 16) {
+      cpu.state = STATES.WALK_F;
+      cpu.x += cpu.data.walkF * 2.4;
+      return;
+    }
+    if (Math.random() < 0.35) {
+      cpu.state = STATES.THROW;
+      cpu.stateTimer = 15;
+      return;
+    }
+    const pressure = ['crouchLK', 'crouchMK', 'standLP', 'standMP'];
+    const atk = pressure[randInt(0, pressure.length - 1)];
+    if (cpu.data.normals[atk]) cpu.startAttack(atk, atk.startsWith('crouch'));
+  }
+
+  doCornerPressure(cpu, player, dist) {
+    // FIX #10: Keep offense active when opponent is cornered.
+    if (dist > 14) {
+      cpu.state = STATES.WALK_F;
+      cpu.x += cpu.data.walkF * 2.2;
+      return;
+    }
+    if (Math.random() < this.diff.specialRate * 0.6) {
+      this.doSpecialDirect(cpu);
+      return;
+    }
+    if (Math.random() < this.diff.comboRate) {
+      this.doComboDirect(cpu);
+      return;
+    }
+    this.doNormalDirect(cpu, true);
+  }
+
+  doJumpForward(cpu) {
+    cpu.state = STATES.JUMP_RISE;
+    cpu.vy = cpu.data.jumpV;
+    cpu.y -= 1;
+    cpu.jumpVx = cpu.data.walkF * 1.2;
+  }
+}
+
+/* ===== SECTION 9: GAME SYSTEMS ===== */
+
+class RoundManager {
+  constructor() { this.reset(); }
+  reset() {
+    this.round = 1;
+    this.p1Wins = 0;
+    this.p2Wins = 0;
+    this.roundOver = false;
+    this.matchOver = false;
+    this.winner = -1;
+    this.timerValue = CFG.ROUND_TIME;
+    this.timerFrames = 0;
+    this.timerRunning = false;
+    this.phase = 'pre';
+    this.phaseTimer = 0;
+    this.isPerfect = false;
+    this.matchEndEmitted = false; // FIX #3
+    this.lastRoundWinner = -1;
+  }
+  startRound() {
+    this.roundOver = false;
+    this.matchOver = false;
+    this.timerValue = CFG.ROUND_TIME;
+    this.timerFrames = 0;
+    this.timerRunning = false;
+    this.phase = 'roundStart';
+    this.phaseTimer = CFG.ROUND_TEXT_FRAMES;
+    this.isPerfect = false;
+  }
+  update(f1, f2) {
+    if (this.phase === 'roundStart') {
+      this.phaseTimer--;
+      if (this.phaseTimer <= CFG.ROUND_TEXT_FRAMES - CFG.FIGHT_TEXT_FRAMES && this.phaseTimer > 0) {
+      }
+      if (this.phaseTimer <= 0) {
+        this.phase = 'fight';
+        this.timerRunning = true;
+      }
+      return;
+    }
+    if (this.phase === 'ko') {
+      this.phaseTimer--;
+      if (this.phaseTimer <= 0) {
+        if (this.p1Wins >= CFG.ROUNDS_TO_WIN || this.p2Wins >= CFG.ROUNDS_TO_WIN) {
+          this.phase = 'matchEnd';
+          this.phaseTimer = CFG.WIN_TEXT_FRAMES;
+          this.matchOver = true;
+          this.winner = this.p1Wins >= CFG.ROUNDS_TO_WIN ? 0 : 1;
+          this.matchEndEmitted = false; // FIX #3
+        } else {
+          this.phase = 'roundResult'; // FIX #19
+          this.phaseTimer = Math.round(CFG.FPS * 1.5); // FIX #19
+        }
+      }
+      return;
+    }
+    if (this.phase === 'roundResult') {
+      this.phaseTimer--;
+      if (this.phaseTimer <= 0) {
+        this.round++;
+        eventBus.emit('nextRound');
+      }
+      return;
+    }
+    if (this.phase === 'matchEnd') {
+      this.phaseTimer--;
+      if (this.phaseTimer <= 0) {
+        // FIX #3: Guard against duplicate matchEnd emissions.
+        if (!this.matchEndEmitted) {
+          this.matchEndEmitted = true;
+          eventBus.emit('matchEnd', { winner: this.winner });
+        }
+      }
+      return;
+    }
+    if (this.phase !== 'fight') return;
+
+    if (this.timerRunning) {
+      this.timerFrames++;
+      if (this.timerFrames >= 60) {
+        this.timerFrames = 0;
+        this.timerValue--;
+        if (this.timerValue <= 0) {
+          this.timerValue = 0;
+          this.timerRunning = false;
+          this.endRound(f1, f2, 'timeout');
+        }
+      }
+    }
+
+    if (f1.hp <= 0 || f2.hp <= 0) {
+      this.timerRunning = false;
+      if (f1.hp <= 0 && f2.hp <= 0) {
+        this.endRound(f1, f2, 'doubleKO');
+      } else if (f1.hp <= 0) {
+        this.endRound(f1, f2, 'p2win');
+      } else {
+        this.endRound(f1, f2, 'p1win');
+      }
+    }
+  }
+  endRound(f1, f2, reason) {
+    this.roundOver = true;
+    this.phase = 'ko';
+    this.phaseTimer = CFG.KO_SLOWMO_FRAMES + 60;
+
+    if (reason === 'timeout') {
+      if (f1.hp > f2.hp) { this.p1Wins++; this.lastRoundWinner = 0; this.isPerfect = f1.hp >= CFG.MAX_HP; f2.state = STATES.LOSE; f1.state = STATES.WIN; }
+      else if (f2.hp > f1.hp) { this.p2Wins++; this.lastRoundWinner = 1; this.isPerfect = f2.hp >= CFG.MAX_HP; f1.state = STATES.LOSE; f2.state = STATES.WIN; }
+      else { this.p1Wins++; this.p2Wins++; this.lastRoundWinner = -1; }
+    } else if (reason === 'doubleKO') {
+      this.p1Wins++; this.p2Wins++;
+      this.lastRoundWinner = -1;
+      f1.startKoBlowAway(f2.x); // FIX #15
+      f2.startKoBlowAway(f1.x);
+    } else if (reason === 'p1win') {
+      this.p1Wins++;
+      this.lastRoundWinner = 0;
+      this.isPerfect = f1.hp >= CFG.MAX_HP;
+      f2.startKoBlowAway(f1.x); // FIX #15
+      f1.state = STATES.WIN;
+    } else {
+      this.p2Wins++;
+      this.lastRoundWinner = 1;
+      this.isPerfect = f2.hp >= CFG.MAX_HP;
+      f1.startKoBlowAway(f2.x); // FIX #15
+      f2.state = STATES.WIN;
+    }
+
+    eventBus.emit('roundEnd', { p1Wins: this.p1Wins, p2Wins: this.p2Wins, reason, isPerfect: this.isPerfect });
+  }
+}
+
+class ScoreManager {
+  constructor() { this.score = 0; }
+  reset() { this.score = 0; }
+  addHit(damage) { this.score += damage * SCORE_TABLE.hitMult; }
+  addCombo(comboDmg, hits) { this.score += comboDmg * hits * SCORE_TABLE.comboBonus; }
+  addPerfect() { this.score += SCORE_TABLE.perfect; }
+  addTimeBonus(remaining) { this.score += remaining * SCORE_TABLE.timeBonus; }
+  addRoundWin() { this.score += SCORE_TABLE.roundWin; }
+  addMatchWin() { this.score += SCORE_TABLE.matchWin; }
+  addGameClear() { this.score += SCORE_TABLE.gameClear; }
+}
+
+class ComboCounter {
+  constructor() { this.count = 0; this.displayCount = 0; this.timer = 0; this.totalDamage = 0; this.side = 0; }
+  addHit(damage, side) {
+    this.count++;
+    this.totalDamage += damage;
+    this.timer = 60;
+    this.displayCount = this.count;
+    this.side = side;
+  }
+  update() {
+    if (this.timer > 0) this.timer--;
+    else { this.count = 0; this.totalDamage = 0; }
+  }
+  render(ctx) {
+    if (this.displayCount >= 2 && this.timer > 0) {
+      const x = this.side === 0 ? CFG.INTERNAL_W * 0.75 : CFG.INTERNAL_W * 0.25;
+      const y = CFG.GROUND_Y - 30;
+      const scale = 1 + (this.timer > 50 ? (60 - this.timer) * 0.05 : 0);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      drawText(ctx, `${this.displayCount} HITS!`, 0, 0, 6, '#FFFF00', 'center');
+      drawText(ctx, `${this.totalDamage} DMG`, 0, 7, 4, '#FFCC00', 'center');
+      ctx.restore();
+    }
+  }
+}
+
+/* ===== SECTION 10: SCENES ===== */
+
+const sceneManager = new SceneManager();
+const inputManager = new InputManager();
+
+let arcadeState = {
+  playerChar: 'kenji',
+  difficulty: 'normal',
+  opponents: [],
+  currentMatch: 0,
+  score: 0
+};
+
+// Title Scene
+sceneManager.add('title', {
+  cursor: 0,
+  timer: 0,
+  enter() { this.cursor = 0; this.timer = 0; },
+  exit() {},
+  update() {
+    this.timer++;
+    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.cursor = (this.cursor - 1 + 2) % 2;
+    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.cursor = (this.cursor + 1) % 2;
+    if (inputManager.wasPressed(KEYS.CONFIRM)) {
+      if (this.cursor === 0) sceneManager.go('charSelect');
+      else sceneManager.go('records');
+    }
+    inputManager.update(true);
+  },
+  render(ctx) {
+    if (!BgImageStore.draw(ctx, 'title')) {
+      ctx.fillStyle = '#0A0A0A';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+      STAGE_DATA[4].drawBg(ctx, this.timer * 0.1);
+    }
+    ctx.fillStyle = 'rgba(8,8,18,0.45)'; // FIX #53
+    ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+
+    const pulse = 1 + Math.sin(this.timer * 0.05) * 0.02;
+    drawTitleLogo(ctx, CFG.INTERNAL_W / 2, 30, pulse);
+
+    const items = ['ARCADE MODE', 'RECORDS'];
+    for (let i = 0; i < items.length; i++) {
+      const sel = i === this.cursor;
+      const col = sel ? '#FFFFFF' : '#888888';
+      const prefix = sel ? '► ' : '  ';
+      drawText(ctx, prefix + items[i], CFG.INTERNAL_W / 2, 65 + i * 12, 6, col, 'center');
+    }
+
+    if (this.timer % 60 < 40) {
+      drawText(ctx, 'PRESS ENTER', CFG.INTERNAL_W / 2, 105, 4, '#888888', 'center');
+    }
+
+    drawText(ctx, 'WASD:MOVE  U/I:PUNCH  J/K:KICK  O/L:SPECIAL  SPACE:SUPER  H:GUARD', CFG.INTERNAL_W / 2, CFG.INTERNAL_H - 6, 3, '#555555', 'center'); // FIX #51
+  }
+});
+
+// Character Select Scene
+sceneManager.add('charSelect', {
+  cursor: 0,
+  timer: 0,
+  charIds: ACTIVE_CHARS, // FIX #69
+  enter() { this.cursor = 0; this.timer = 0; },
+  exit() {},
+  update() {
+    const n = this.charIds.length;
+    this.timer++;
+    if (inputManager.wasPressed(KEYS.LEFT) || inputManager.wasPressed('KeyA')) this.cursor = (this.cursor - 1 + n) % n;
+    if (inputManager.wasPressed(KEYS.RIGHT) || inputManager.wasPressed('KeyD')) this.cursor = (this.cursor + 1) % n;
+    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.cursor = (this.cursor - 1 + n) % n;
+    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.cursor = (this.cursor + 1) % n;
+    if (inputManager.wasPressed(KEYS.CONFIRM)) {
+      arcadeState.playerChar = this.charIds[this.cursor];
+      sceneManager.go('diffSelect');
+    }
+    if (inputManager.wasPressed(KEYS.PAUSE)) sceneManager.go('title');
+    inputManager.update(true);
+  },
+  render(ctx) {
+    if (!BgImageStore.draw(ctx, 'charSelect')) {
+      ctx.fillStyle = '#111122';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    } else {
+      ctx.fillStyle = 'rgba(10,10,24,0.48)';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    }
+    drawText(ctx, 'SELECT YOUR FIGHTER', CFG.INTERNAL_W / 2, 12, 7, '#FFFFFF', 'center');
+
+    const startX = CFG.INTERNAL_W / 2 - 85;
+    const startY = 28;
+    for (let i = 0; i < this.charIds.length; i++) {
+      const bx = startX + i * 56, by = startY;
+      const sel = i === this.cursor;
+      const ch = CHARACTERS[this.charIds[i]];
+
+      ctx.fillStyle = sel ? '#334466' : '#1A1A2E';
+      ctx.fillRect(bx, by, 50, 35);
+      ctx.strokeStyle = sel ? '#FFFFFF' : '#444466';
+      ctx.strokeRect(bx, by, 50, 35);
+
+      // FIX #36: Character select cards now use bust-up portraits.
+      const faceRight = i <= Math.floor((this.charIds.length - 1) / 2);
+      drawCharacterPortrait(ctx, this.charIds[i], bx + 2, by + 2, 46, 21, faceRight, { mode: 'card' }); // FIX #73
+
+      drawText(ctx, ch.name, bx + 25, by + 25, 4, sel ? '#FFFFFF' : '#AAAAAA', 'center');
+
+      // FIX #17: Show per-character SPEED/POWER/REACH bars on select cards.
+      const stats = CHAR_STATS[this.charIds[i]];
+      const statKeys = ['speed', 'power', 'reach'];
+      const statCols = ['#66CCFF', '#FF7755', '#FFD766'];
+      for (let s = 0; s < 3; s++) {
+        const sy = by + 28 + s * 2;
+        ctx.fillStyle = '#222233';
+        ctx.fillRect(bx + 4, sy, 12, 2);
+        ctx.fillStyle = statCols[s];
+        ctx.fillRect(bx + 4, sy, 4 * stats[statKeys[s]], 2);
+      }
+    }
+
+    const selChar = CHARACTERS[this.charIds[this.cursor]];
+    const selStats = CHAR_STATS[this.charIds[this.cursor]];
+    drawText(ctx, selChar.subtitle, CFG.INTERNAL_W / 2, 115, 4, '#AAAACC', 'center');
+    drawText(ctx, `SPD ${'■'.repeat(selStats.speed)}  POW ${'■'.repeat(selStats.power)}  RCH ${'■'.repeat(selStats.reach)}`, CFG.INTERNAL_W / 2, 123, 3, '#CCCCDD', 'center');
+    drawText(ctx, '← A  D →  ENTER: SELECT  ESC: BACK', CFG.INTERNAL_W / 2, CFG.INTERNAL_H - 6, 3, '#555555', 'center');
+  }
+});
+
+// Difficulty Select Scene
+sceneManager.add('diffSelect', {
+  cursor: 1,
+  timer: 0,
+  diffs: ['easy', 'normal', 'hard'],
+  labels: ['★☆☆  EASY', '★★☆  NORMAL', '★★★  HARD'],
+  enter() { this.cursor = 1; this.timer = 0; },
+  exit() {},
+  update() {
+    this.timer++;
+    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.cursor = (this.cursor - 1 + 3) % 3;
+    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.cursor = (this.cursor + 1) % 3;
+    if (inputManager.wasPressed(KEYS.CONFIRM)) {
+      arcadeState.difficulty = this.diffs[this.cursor];
+      startArcade();
+    }
+    if (inputManager.wasPressed(KEYS.PAUSE)) sceneManager.go('charSelect');
+    inputManager.update(true);
+  },
+  render(ctx) {
+    if (!BgImageStore.draw(ctx, 'diffSelect')) {
+      ctx.fillStyle = '#111122';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    } else {
+      ctx.fillStyle = 'rgba(10,10,24,0.5)';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    }
+    drawText(ctx, 'SELECT DIFFICULTY', CFG.INTERNAL_W / 2, 20, 7, '#FFFFFF', 'center');
+
+    for (let i = 0; i < 3; i++) {
+      const sel = i === this.cursor;
+      const col = sel ? '#FFFFFF' : '#666666';
+      const prefix = sel ? '► ' : '  ';
+      drawText(ctx, prefix + this.labels[i], CFG.INTERNAL_W / 2, 50 + i * 15, 6, col, 'center');
+    }
+    drawText(ctx, 'ESC: BACK', CFG.INTERNAL_W / 2, CFG.INTERNAL_H - 6, 3, '#555555', 'center');
+  }
+});
+
+function startArcade() {
+  const pChar = arcadeState.playerChar;
+  const others = ACTIVE_CHARS.filter(c => c !== pChar); // FIX #69
+  for (let i = others.length - 1; i > 0; i--) {
+    const j = randInt(0, i);
+    [others[i], others[j]] = [others[j], others[i]];
+  }
+  others.push(pChar);
+  arcadeState.opponents = others;
+  arcadeState.currentMatch = 0;
+  arcadeState.score = 0;
+  sceneManager.go('vsScreen');
+}
+
+// VS Screen
+sceneManager.add('vsScreen', {
+  timer: 0,
+  enter() { this.timer = CFG.VS_DURATION; },
+  exit() {},
+  update() {
+    this.timer--;
+    if (this.timer <= 0 || inputManager.wasPressed(KEYS.CONFIRM)) {
+      sceneManager.go('battle');
+    }
+    inputManager.update(true);
+  },
+  render(ctx) {
+    const p1 = CHARACTERS[arcadeState.playerChar];
+    const oppId = arcadeState.opponents[arcadeState.currentMatch];
+    const p2 = CHARACTERS[oppId];
+    const finalIdx = Math.max(0, arcadeState.opponents.length - 1);
+    const stageIdx = arcadeState.currentMatch === finalIdx ? 4 : (CHAR_STAGE_MAP[oppId] ?? 0);
+    const diffStageKey = BgImageStore.stageKeyForDifficulty(arcadeState.difficulty);
+    if (!BgImageStore.draw(ctx, diffStageKey)) {
+      STAGE_DATA[stageIdx].drawBg(ctx, this.timer * 0.6); // FIX #18
+    }
+    ctx.fillStyle = 'rgba(8,8,20,0.62)';
+    ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+
+    const t = 1 - this.timer / CFG.VS_DURATION;
+    const slide = easeOutCubic(Math.min(t * 2, 1));
+    const nameSlide = easeOutCubic(Math.min(t * 2.6, 1));
+
+    const p1x = -30 + slide * 70;
+    const p2x = CFG.INTERNAL_W + 30 - slide * 70;
+
+    // FIX #36: VS screen now uses zoomed bust-up portraits.
+    const bustW = 48, bustH = 58, bustY = 24;
+    const p1Bx = p1x - bustW * 0.5;
+    const p2Bx = p2x - bustW * 0.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.strokeRect(p1Bx - 1, bustY - 1, bustW + 2, bustH + 2);
+    ctx.strokeRect(p2Bx - 1, bustY - 1, bustW + 2, bustH + 2);
+    drawCharacterPortrait(ctx, arcadeState.playerChar, p1Bx, bustY, bustW, bustH, true);
+    drawCharacterPortrait(ctx, oppId, p2Bx, bustY, bustW, bustH, false);
+    drawText(ctx, p1.name, -55 + nameSlide * 92, 92, 6, '#FFFFFF', 'center');
+    drawText(ctx, p2.name, CFG.INTERNAL_W + 55 - nameSlide * 92, 92, 6, '#FFFFFF', 'center');
+
+    drawText(ctx, 'VS', CFG.INTERNAL_W / 2, 45, 14, '#FF4444', 'center');
+    drawText(ctx, `MATCH ${arcadeState.currentMatch + 1}`, CFG.INTERNAL_W / 2, 100, 5, '#888888', 'center');
+    drawText(ctx, STAGE_DATA[stageIdx].name.toUpperCase(), CFG.INTERNAL_W / 2, 110, 4, '#BBBBBB', 'center');
+
+    if (arcadeState.currentMatch === finalIdx) {
+      drawText(ctx, '- FINAL BATTLE -', CFG.INTERNAL_W / 2, 118, 4, '#FF6600', 'center');
+    }
+  }
+});
+
+// Battle Scene
+const battleScene = {
+  p1: null, p2: null,
+  cpuInput: null,
+  cpuController: null,
+  roundMgr: null,
+  scoreMgr: null,
+  comboCounter: null,
+  camera: null,
+  stageIdx: 0,
+  frozenFrames: 0,
+  flashAlpha: 0,
+  slowMotion: false,
+  slowTimer: 0,
+  frameSkip: 0,
+  paused: false,
+  pauseCursor: 0,
+  textOverlay: null,
+  textTimer: 0,
+  superCutin: null,
+
+  enter() {
+    const pCharId = arcadeState.playerChar;
+    const oppCharId = arcadeState.opponents[arcadeState.currentMatch];
+
+    this.p1 = new Fighter(pCharId, 0);
+    this.p2 = new Fighter(oppCharId, 1);
+    this.cpuInput = new InputManager();
+    this.cpuController = new CPUController(arcadeState.difficulty);
+
+    const finalIdx = Math.max(0, arcadeState.opponents.length - 1);
+    if (arcadeState.currentMatch === finalIdx) {
+      const bossLevel = arcadeState.difficulty === 'easy' ? 'normal' : (arcadeState.difficulty === 'normal' ? 'hard' : 'hard');
+      this.cpuController = new CPUController(bossLevel);
+    }
+
+    this.roundMgr = new RoundManager();
+    this.scoreMgr = new ScoreManager();
+    this.scoreMgr.score = arcadeState.score;
+    this.comboCounter = new ComboCounter();
+    this.camera = new Camera();
+
+    this.stageIdx = arcadeState.currentMatch === finalIdx ? 4 : (CHAR_STAGE_MAP[oppCharId] ?? 0);
+
+    this.paused = false;
+    this.pauseCursor = 0;
+    this.frozenFrames = 0;
+    this.flashAlpha = 0;
+    this.slowMotion = false;
+    this.slowTimer = 0;
+    this.textOverlay = null;
+    this.textTimer = 0;
+    this.superCutin = {
+      active:false, timer:0, attacker:null, defender:null, damage:0, video:null,
+      introFrames:0, introImage:null, videoStarted:false
+    };
+
+    particles.clear();
+    projectiles[0].active = false;
+    projectiles[1].active = false;
+
+    this.resetPositions(false);
+    this.roundMgr.startRound();
+
+    eventBus.clear();
+    eventBus.on('roundEnd', (data) => {
+      if (data.isPerfect) this.scoreMgr.addPerfect();
+      this.scoreMgr.addTimeBonus(this.roundMgr.timerValue);
+      if (data.reason === 'p1win' || (data.reason === 'timeout' && this.p1.hp > this.p2.hp)) {
+        this.scoreMgr.addRoundWin();
+      }
+      this.slowMotion = true;
+      this.slowTimer = 30;
+    });
+    eventBus.on('nextRound', () => {
+      this.resetPositions(true); // FIX #79
+      this.roundMgr.startRound();
+      particles.clear();
+      projectiles[0].active = false;
+      projectiles[1].active = false;
+      if (this.superCutin) this.superCutin.active = false; // FIX #55
+    });
+    eventBus.on('matchEnd', (data) => {
+      if (this.superCutin) this.superCutin.active = false; // FIX #55
+      arcadeState.score = this.scoreMgr.score;
+      if (data.winner === 0) {
+        this.scoreMgr.addMatchWin();
+        arcadeState.score = this.scoreMgr.score;
+        arcadeState.currentMatch++;
+        if (arcadeState.currentMatch >= arcadeState.opponents.length) {
+          this.scoreMgr.addGameClear();
+          arcadeState.score = this.scoreMgr.score;
+          setTimeout(() => sceneManager.go('ending'), 100);
+        } else {
+          setTimeout(() => sceneManager.go('vsScreen'), 100);
+        }
+      } else {
+        arcadeState.score = this.scoreMgr.score;
+        setTimeout(() => sceneManager.go('gameOver'), 100);
+      }
+    });
+  },
+
+  exit() {
+    if (this.superCutin && this.superCutin.video) {
+      try { this.superCutin.video.pause(); this.superCutin.video.currentTime = 0; } catch (_e) {}
+    }
+    eventBus.clear();
+  },
+
+  resetPositions(keepSuper = false) {
+    this.p1.reset(CFG.STAGE_W * 0.35, keepSuper);
+    this.p2.reset(CFG.STAGE_W * 0.65, keepSuper);
+    this.p1.facingRight = true;
+    this.p2.facingRight = false;
+    this.comboCounter.count = 0;
+    this.comboCounter.timer = 0;
+  },
+
+  update() {
+    if (this.paused) {
+      if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.pauseCursor = (this.pauseCursor - 1 + 2) % 2;
+      if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.pauseCursor = (this.pauseCursor + 1) % 2;
+      if (inputManager.wasPressed(KEYS.CONFIRM)) {
+        if (this.pauseCursor === 0) this.paused = false;
+        else sceneManager.go('title');
+      }
+      if (inputManager.wasPressed(KEYS.PAUSE)) this.paused = false;
+      inputManager.update(true);
+      return;
+    }
+
+    if (inputManager.wasPressed(KEYS.PAUSE) && this.roundMgr.phase === 'fight') {
+      this.paused = true;
+      this.pauseCursor = 0;
+      inputManager.update(true);
+      return;
+    }
+
+    if (this.frozenFrames > 0) {
+      this.frozenFrames--;
+      inputManager.update(this.p1.facingRight);
+      return;
+    }
+
+    if (this.slowMotion) {
+      this.slowTimer--;
+      if (this.slowTimer <= 0) this.slowMotion = false;
+      this.frameSkip = (this.frameSkip + 1) % 4;
+      if (this.frameSkip !== 0) {
+        inputManager.update(this.p1.facingRight);
+        return;
+      }
+    }
+
+    inputManager.update(this.p1.facingRight);
+
+    if (this.superCutin && this.superCutin.active) {
+      this.updateSuperCutin();
+      this.camera.follow(this.p1.x, this.p2.x);
+      this.camera.update();
+      particles.update();
+      return;
+    }
+
+    // FIX #66: Hold battle simulation until required imported sprite sets are ready.
+    const needImported = [this.p1 && this.p1.charId, this.p2 && this.p2.charId].some((id) => ACTIVE_CHARS.includes(id));
+    const importedReady = ACTIVE_CHARS.every((id) => {
+      const used = (this.p1 && this.p1.charId === id) || (this.p2 && this.p2.charId === id);
+      return !used || SpriteStore.isReady(id);
+    });
+    if (needImported && !importedReady) {
+      this.camera.follow(this.p1.x, this.p2.x);
+      this.camera.update();
+      particles.update();
+      return;
+    }
+
+    this.roundMgr.update(this.p1, this.p2);
+
+    if (this.roundMgr.phase === 'fight') {
+      this.cpuController.update(this.p2, this.p1, this.cpuInput);
+      this.cpuInput.update(this.p2.facingRight);
+
+      if (this.p2.canUseSuper() && Math.random() < 0.012) {
+        if (this.tryStartSuper(this.p2, this.p1)) {
+          this.camera.follow(this.p1.x, this.p2.x);
+          this.camera.update();
+          return;
+        }
+      }
+
+      this.handlePlayerInput(this.p1, inputManager);
+      if (this.superCutin && this.superCutin.active) {
+        this.camera.follow(this.p1.x, this.p2.x);
+        this.camera.update();
+        return;
+      }
+
+      this.p1.updateFacing(this.p2);
+      this.p2.updateFacing(this.p1);
+
+      this.p1.update();
+      this.p2.update();
+
+      for (let p of projectiles) p.update();
+
+      CollisionSystem.resolvePushboxes(this.p1, this.p2);
+
+      this.checkCombat(this.p1, this.p2, 0);
+      this.checkCombat(this.p2, this.p1, 1);
+      this.checkProjectiles();
+
+      this.comboCounter.update();
+    } else {
+      this.p1.update();
+      this.p2.update();
+    }
+
+    this.camera.follow(this.p1.x, this.p2.x);
+    this.camera.update();
+    particles.update();
+
+    if (this.flashAlpha > 0) this.flashAlpha -= 0.05;
+    if (this.textTimer > 0) this.textTimer--;
+  },
+
+  getOpponent(fighter) {
+    return fighter === this.p1 ? this.p2 : this.p1;
+  },
+
+  // FIX #55: Build/consume super gauge and resolve super-cinematic damage.
+  awardSuper(attacker, defender, dmg, isBlocked) {
+    // FIX #83: Reduce super gain to 0.5x of the current setting (0.25x original pace).
+    const baseAtk = isBlocked ? 4 : (8 + Math.round(dmg / 25));
+    const baseDef = isBlocked ? 3 : (6 + Math.round(dmg / 35));
+    const atkGain = Math.max(1, Math.round(baseAtk * 0.25));
+    const defGain = Math.max(1, Math.round(baseDef * 0.25));
+    attacker.addSuperMeter(atkGain);
+    defender.addSuperMeter(defGain);
+  },
+
+  tryStartSuper(attacker, defender) {
+    if (!attacker || !defender) return false;
+    if (!attacker.canUseSuper()) return false;
+    if (attacker.hp <= 0 || defender.hp <= 0) return false;
+    if (!this.superCutin || this.superCutin.active) return false;
+
+    attacker.consumeSuper();
+    const video = SuperVideoStore.get(attacker.charId, defender.charId);
+    const introImage = SAImageStore.get(attacker.charId);
+    let cutinFrames = CFG.SUPER_CUTIN_FRAMES;
+    if (video) {
+      try {
+        video.pause();
+        video.currentTime = 0;
+        video.playbackRate = 1;
+        video.loop = false;
+      } catch (_e) {}
+      const hasDuration = Number.isFinite(video.duration) && video.duration > 0;
+      const durationFrames = hasDuration ? Math.ceil(video.duration * CFG.FPS) : CFG.FPS * 10;
+      cutinFrames = Math.max(CFG.SUPER_CUTIN_FRAMES, durationFrames);
+    }
+    this.superCutin = {
+      active: true,
+      timer: cutinFrames, // FIX #77
+      attacker,
+      defender,
+      damage: CFG.SUPER_DAMAGE,
+      video,
+      introFrames: CFG.FPS, // FIX #80
+      introImage,
+      videoStarted: false
+    };
+    this.frozenFrames = 0;
+    this.flashAlpha = 0.15;
+    return true;
+  },
+
+  updateSuperCutin() {
+    if (!this.superCutin || !this.superCutin.active) return false;
+    if (this.superCutin.introFrames > 0) {
+      this.superCutin.introFrames--;
+      return true;
+    }
+
+    if (this.superCutin.video && !this.superCutin.videoStarted) {
+      this.superCutin.videoStarted = true;
+      try {
+        this.superCutin.video.currentTime = 0;
+        const p = this.superCutin.video.play();
+        if (p && p.catch) p.catch(() => {});
+      } catch (_e) {}
+    }
+
+    this.superCutin.timer--;
+    if (this.superCutin.video) {
+      const stillPlaying = !this.superCutin.video.ended && this.superCutin.timer > 0;
+      if (stillPlaying) return true;
+    } else if (this.superCutin.timer > 0) {
+      return true;
+    }
+
+    const atk = this.superCutin.attacker;
+    const def = this.superCutin.defender;
+    if (this.superCutin.video) {
+      try { this.superCutin.video.pause(); this.superCutin.video.currentTime = 0; } catch (_e) {}
+    }
+    if (atk && def && def.hp > 0) {
+      const dealt = def.takeDamage(this.superCutin.damage, 20, 0, 10, false, 'mid', true, 0);
+      this.awardSuper(atk, def, dealt, false);
+      this.comboCounter.addHit(dealt, atk.pi);
+      this.scoreMgr.addHit(dealt);
+      const cam = this.camera.getOffset();
+      particles.spawnHitSpark((atk.x + def.x) * 0.5 + cam.x, Math.min(atk.y, def.y) - 14 + cam.y);
+      this.camera.shake(2.4, 14);
+      this.flashAlpha = 0.42;
+      if (def.hp <= 0) {
+        this.slowMotion = true;
+        this.slowTimer = CFG.KO_SLOWMO_FRAMES;
+      }
+    }
+    this.superCutin.active = false;
+    return true;
+  },
+
+  renderSuperCutin(ctx) {
+    if (!this.superCutin || !this.superCutin.active) return;
+    const sc = this.superCutin;
+    const W = CFG.INTERNAL_W;
+    const H = CFG.INTERNAL_H;
+    const barH = 10;
+    if (sc.introFrames > 0 && sc.introImage) {
+      // FIX #80: Show SA splash art for ~1s before cinematic video.
+      ctx.fillStyle = '#05060A';
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(sc.introImage, 0, 0, W, H);
+    } else if (sc.video && sc.video.readyState >= 2) {
+      // FIX #78: Fullscreen SA video with cinematic top/bottom black bars.
+      ctx.drawImage(sc.video, 0, 0, W, H);
+    } else {
+      const t = Math.max(0, (CFG.SUPER_CUTIN_FRAMES - sc.timer) * 0.08);
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, '#101226');
+      g.addColorStop(1, '#263553');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(120,220,255,0.25)';
+      for (let i = 0; i < 7; i++) {
+        const lx = 8 + ((i * 42 + t * 30) % (W - 16));
+        ctx.fillRect(lx, barH + 2, 2, H - (barH + 2) * 2);
+      }
+      drawText(ctx, 'SUPER ARTS', W / 2, H / 2 - 3, 8, '#D9F7FF', 'center');
+      drawText(ctx, sc.attacker ? sc.attacker.data.name : 'FIGHTER', W / 2, H / 2 + 10, 5, '#7FDBFF', 'center');
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.92)';
+    ctx.fillRect(0, 0, W, barH);
+    ctx.fillRect(0, H - barH, W, barH);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(0, barH - 1, W, 1);
+    ctx.fillRect(0, H - barH, W, 1);
+    // FIX #81: No text on cinematic bars.
+  },
+
+  strengthRank(strength) {
+    if (strength === 'L') return 0;
+    if (strength === 'M') return 1;
+    if (strength === 'H') return 2;
+    return -1;
+  },
+
+  tryStartSpecialFromInput(fighter, input, btn, str, dir, requireHitConfirmCancel) {
+    if (!btn) return false;
+    if (requireHitConfirmCancel && !fighter.canSpecialCancel()) return false;
+
+    const charSpecials = fighter.data.specials;
+    for (let spName in charSpecials) {
+      const sp = charSpecials[spName];
+
+      // FIX #9: Mei-Lin mash trigger relaxed to 3 presses / 20F.
+      if (sp.command === 'mash_P' && input.mashCount >= CFG.MASH_THRESHOLD && input.isPunch(btn)) {
+        fighter.startSpecial(spName, str || 'L');
+        input.mashCount = 0;
+        return true;
+      }
+
+      if (sp.command === 'teleport') {
+        if (input.checkCommand([6,2,3]) && input.isKick(btn)) {
+          fighter.startSpecial(spName, 'forward');
+          return true;
+        }
+        if (input.checkCommand([4,2,1]) && input.isKick(btn)) {
+          fighter.startSpecial(spName, 'backward');
+          return true;
+        }
+      }
+
+      if (typeof sp.command === 'string' && sp.command.startsWith('charge')) {
+        const chargeDir = sp.chargeDir;
+        const releaseDir = sp.releaseDir;
+        const needBtn = sp.command.endsWith('P') ? 'P' : 'K';
+        if (input.chargeReady[chargeDir]) {
+          // FIX #8: Allow adjacent release directions for charge moves (6/3/9 or 8/7/9).
+          const forwardRelease = (dir === 6 || dir === 3 || dir === 9);
+          const upRelease = (dir === 8 || dir === 7 || dir === 9);
+          const releaseDirMatch = (releaseDir === 6 && forwardRelease) || (releaseDir === 8 && upRelease);
+          if (releaseDirMatch && ((needBtn === 'P' && input.isPunch(btn)) || (needBtn === 'K' && input.isKick(btn)))) {
+            fighter.startSpecial(spName, str || 'L');
+            input.chargeReady[chargeDir] = false;
+            input.chargeTimers[chargeDir] = 0;
+            input.chargeRelease[chargeDir] = 0;
+            return true;
+          }
+        }
+        continue;
+      }
+
+      if (Array.isArray(sp.command)) {
+        const [cmdDirs, cmdBtn] = sp.command;
+        if ((cmdBtn === 'P' && input.isPunch(btn)) || (cmdBtn === 'K' && input.isKick(btn))) {
+          if (input.checkCommand(cmdDirs)) {
+            fighter.startSpecial(spName, str || 'L');
+            input.dirBuffer = [];
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  },
+
+  tryChainCancel(fighter, opponent, btn, dir, str) {
+    if (!btn || !fighter.currentAttack || fighter.currentSpecial) return false;
+    if (fighter.state !== STATES.STAND_ATTACK && fighter.state !== STATES.CROUCH_ATTACK) return false;
+    if (fighter.attackPhase !== 'recovery') return false;
+    if (opponent.state !== STATES.HITSTUN) return false;
+
+    const currentRank = this.strengthRank(fighter.getCurrentAttackStrength());
+    const nextRank = this.strengthRank(str);
+    if (nextRank !== currentRank + 1) return false;
+
+    // FIX #6: Chain combo cancel from recovery when next strength is entered during hitstun.
+    const isCrouch = (dir === 1 || dir === 2 || dir === 3) || fighter.state === STATES.CROUCH_ATTACK;
+    const nextAttack = (isCrouch ? 'crouch' : 'stand') + btn;
+    if (!fighter.data.normals[nextAttack]) return false;
+    fighter.startAttack(nextAttack, isCrouch);
+    fighter.hitConfirmFrames = 0;
+    return true;
+  },
+
+  tryAttackCancelInput(fighter, opponent, input, btn, str, dir) {
+    if (!btn || !fighter.isInAttack()) return false;
+    if (this.tryChainCancel(fighter, opponent, btn, dir, str)) return true;
+
+    const canCancelNormal = (fighter.state === STATES.STAND_ATTACK || fighter.state === STATES.CROUCH_ATTACK) &&
+                            fighter.attackPhase !== 'startup';
+    if (!canCancelNormal) return false;
+    // FIX #7: Special cancel on hit-confirm while normal attack is still in progress/recovery.
+    return this.tryStartSpecialFromInput(fighter, input, btn, str, dir, true);
+  },
+
+  // FIX #33: Direct special triggers on O/L, with character-specific mapping.
+  trySpecialBySlot(fighter, dir, slot, requireHitConfirmCancel) {
+    if (requireHitConfirmCancel && !fighter.canSpecialCancel()) return false;
+    if (!requireHitConfirmCancel && !fighter.canAct()) return false;
+
+    const specials = fighter.data.specials || {};
+    const names = Object.keys(specials);
+    if (!names.length) return false;
+
+    let pickName = null;
+    if (fighter.charId === 'kenji') {
+      if (slot === 'SP1') pickName = specials.spiritFist ? 'spiritFist' : null;
+      if (slot === 'SP2') pickName = specials.risingDragon ? 'risingDragon' : null;
+    }
+
+    if (!pickName) {
+      const desiredTypes = slot === 'SP1' ? ['projectile', 'advancing', 'rapid'] : ['antiAir', 'advancing', 'projectile'];
+      for (const type of desiredTypes) {
+        pickName = names.find((n) => specials[n].type === type);
+        if (pickName) break;
+      }
+      if (!pickName) pickName = names.find((n) => specials[n].type !== 'teleport') || names[0];
+    }
+
+    const sp = specials[pickName];
+    if (!sp) return false;
+    if (sp.type === 'teleport') {
+      fighter.startSpecial(pickName, (dir === 4 || dir === 1 || dir === 7) ? 'backward' : 'forward');
+      return true;
+    }
+    fighter.startSpecial(pickName, slot === 'SP1' ? 'L' : 'H');
+    return true;
+  },
+
+  handlePlayerInput(fighter, input) {
+    if (fighter.hp <= 0) return;
+    const dir = input.getDirection(fighter.facingRight);
+    const btn = input.getPressedButton();
+    const str = input.getStrength(btn);
+    const opponent = this.getOpponent(fighter);
+
+    if (input.wasPressed(KEYS.SUPER) && this.tryStartSuper(fighter, opponent)) return; // FIX #56
+    if (this.tryAttackCancelInput(fighter, opponent, input, btn, str, dir)) return;
+    if (input.wasPressed(KEYS.SP1) && this.trySpecialBySlot(fighter, dir, 'SP1', fighter.isInAttack())) return;
+    if (input.wasPressed(KEYS.SP2) && this.trySpecialBySlot(fighter, dir, 'SP2', fighter.isInAttack())) return;
+
+    if (!fighter.canAct()) {
+      if ((fighter.state === STATES.JUMP_RISE || fighter.state === STATES.JUMP_FALL ||
+           fighter.state === STATES.JUMP_PEAK) && !fighter.airAttackUsed) {
+        if (btn) {
+          const jumpAtk = 'jump' + btn;
+          if (fighter.data.normals[jumpAtk]) {
+            fighter.startAttack(jumpAtk, false);
+            fighter.airAttackUsed = true;
+          }
+        }
+      }
+      return;
+    }
+
+    if (btn) {
+      const throwCheck = input.wasPressed(KEYS.LP) && input.wasPressed(KEYS.LK);
+      if (throwCheck || (input.justPressed[KEYS.LP] && input.keys[KEYS.LK]) || (input.justPressed[KEYS.LK] && input.keys[KEYS.LP])) {
+        if (fighter.canAct()) {
+          fighter.state = STATES.THROW;
+          fighter.stateTimer = 15;
+          return;
+        }
+      }
+
+      if (!this.tryStartSpecialFromInput(fighter, input, btn, str, dir, false)) {
+        let atkName;
+        const isCrouch = dir === 1 || dir === 2 || dir === 3;
+        if (isCrouch) {
+          atkName = 'crouch' + btn;
+        } else {
+          atkName = 'stand' + btn;
+        }
+        if (fighter.data.normals[atkName]) {
+          fighter.startAttack(atkName, isCrouch);
+        }
+      }
+      return;
+    }
+
+    if (dir === 8 || dir === 7 || dir === 9) {
+      fighter.state = STATES.JUMP_RISE;
+      fighter.vy = fighter.data.jumpV;
+      fighter.y -= 1;
+      if (dir === 9) fighter.jumpVx = fighter.data.walkF * 1.2;
+      else if (dir === 7) fighter.jumpVx = -fighter.data.walkB * 1.2;
+      else fighter.jumpVx = 0;
+    } else if (dir === 6) {
+      fighter.state = STATES.WALK_F;
+      fighter.x += fighter.data.walkF;
+    } else if (dir === 4) {
+      fighter.state = STATES.WALK_B;
+      fighter.x -= fighter.data.walkB;
+    } else if (dir === 1 || dir === 2 || dir === 3) {
+      fighter.state = STATES.CROUCH;
+    } else {
+      if (fighter.state === STATES.WALK_F || fighter.state === STATES.WALK_B || fighter.state === STATES.CROUCH) {
+        fighter.state = STATES.IDLE;
+      }
+    }
+  },
+
+  checkCombat(attacker, defender, attackerIdx) {
+    if (attacker.state === STATES.THROW && attacker.stateTimer === 13) {
+      if (CollisionSystem.checkThrow(attacker, defender) && defender.canAct()) {
+        defender.state = STATES.THROWN;
+        defender.stateTimer = 20;
+        const dmg = defender.takeDamage(120, 0, 0, 3, false, 'mid', false, 0);
+        this.awardSuper(attacker, defender, dmg, false); // FIX #55
+        this.scoreMgr.addHit(dmg);
+        return;
+      }
+    }
+
+    if (!attacker.hitBox || attacker.hasHitThisAttack) return;
+
+    const hit = CollisionSystem.checkHit(attacker, defender);
+    if (!hit) return;
+
+    if (defender.isInvincible()) return;
+
+    const atkData = attacker.getAttackData();
+    if (!atkData) return;
+
+    const isSpecial = !!attacker.currentSpecial;
+    const spData = attacker.getSpecialData();
+    const damage = spData && spData.type === 'advancing' && atkData.damagePerHit ? atkData.damagePerHit :
+                   spData && spData.type === 'rapid' && atkData.damagePerHit ? atkData.damagePerHit :
+                   spData && spData.type === 'melee' && atkData.damage ? Math.round(atkData.damage / (atkData.hits || 1)) :
+                   atkData.damage || 30;
+
+    const isBlocked = this.checkBlock(defender, atkData.type || 'mid');
+    const hitstun = atkData.hitstun || 12;
+    const blockstun = atkData.blockstun || 8;
+    const kb = atkData.knockback || 3;
+
+    const comboCount = isBlocked ? 0 : this.comboCounter.count;
+    const actualDmg = defender.takeDamage(damage, hitstun, blockstun, kb, isBlocked, atkData.type, isSpecial, comboCount);
+    this.awardSuper(attacker, defender, actualDmg, isBlocked); // FIX #55
+    attacker.markHitConfirm(isBlocked);
+
+    if (!isBlocked) {
+      this.comboCounter.addHit(actualDmg, attackerIdx);
+      this.scoreMgr.addHit(actualDmg);
+
+      const hitX = (attacker.x + defender.x) / 2;
+      const hitY = Math.min(attacker.y, defender.y) - 10;
+      particles.spawnHitSpark(hitX + this.camera.getOffset().x, hitY + this.camera.getOffset().y);
+
+      const stopFrames = isSpecial ? 10 : (damage > 70 ? 8 : (damage > 40 ? 5 : 3));
+      this.frozenFrames = stopFrames;
+
+      if (damage > 60 || isSpecial) {
+        this.camera.shake(1, 8);
+      }
+      if (isSpecial) {
+        this.flashAlpha = 0.3;
+      }
+    } else {
+      const hitX = (attacker.x + defender.x) / 2;
+      const hitY = Math.min(attacker.y, defender.y) - 10;
+      particles.spawnBlockSpark(hitX + this.camera.getOffset().x, hitY + this.camera.getOffset().y);
+      this.frozenFrames = 2;
+    }
+
+    if (spData && (spData.type === 'advancing' || spData.type === 'rapid' || spData.type === 'melee')) {
+      attacker.specialHitCount++;
+      if (attacker.specialHitCount < (atkData.hits || 1)) {
+        attacker.hasHitThisAttack = false;
+      } else {
+        attacker.hasHitThisAttack = true;
+      }
+    } else {
+      attacker.hasHitThisAttack = true;
+    }
+
+    if (atkData.sweep && !isBlocked) {
+      defender.applyKnockdown();
+    }
+
+    if (defender.hp <= 0) {
+      this.slowMotion = true;
+      this.slowTimer = CFG.KO_SLOWMO_FRAMES;
+      this.camera.shake(2, 15);
+      this.flashAlpha = 0.5;
+    }
+  },
+
+  checkBlock(defender, atkType) {
+    if (!defender.canBlock()) return false;
+    const defInput = defender.pi === 0 ? inputManager : this.cpuInput;
+    const dir = defInput.getDirection(defender.facingRight);
+
+    // FIX #28: Switch guard condition from back direction to dedicated guard button.
+    const isGuardPressed = defInput.isHeld(KEYS.GUARD);
+    const isCrouching = (dir === 1 || dir === 2 || dir === 3);
+
+    if (!isGuardPressed) return false;
+
+    if (atkType === 'high' && isCrouching) return false;
+    if (atkType === 'low' && !isCrouching) return false;
+    if (atkType === 'overhead' && isCrouching) return false;
+
+    return true;
+  },
+
+  checkProjectiles() {
+    for (let p of projectiles) {
+      if (!p.active) continue;
+      const target = p.owner === 0 ? this.p2 : this.p1;
+      if (target.hurtBox && aabbOverlap(p.hitBox, target.hurtBox)) {
+        if (!target.isInvincible()) {
+          const isBlocked = this.checkBlock(target, 'mid');
+          const dealt = target.takeDamage(p.damage, 12, 8, 3, isBlocked, 'mid', true, 0);
+          const ownerF = p.owner === 0 ? this.p1 : this.p2;
+          this.awardSuper(ownerF, target, dealt, isBlocked); // FIX #55
+          if (!isBlocked) {
+            particles.spawnHitSpark(p.x + this.camera.getOffset().x, p.y + this.camera.getOffset().y);
+            this.frozenFrames = 5;
+          } else {
+            particles.spawnBlockSpark(p.x + this.camera.getOffset().x, p.y + this.camera.getOffset().y);
+          }
+        }
+        p.destroy();
+      }
+    }
+    if (projectiles[0].active && projectiles[1].active) {
+      if (aabbOverlap(projectiles[0].hitBox, projectiles[1].hitBox)) {
+        const mx = (projectiles[0].x + projectiles[1].x) / 2;
+        const my = (projectiles[0].y + projectiles[1].y) / 2;
+        particles.spawnHitSpark(mx + this.camera.getOffset().x, my + this.camera.getOffset().y);
+        projectiles[0].destroy();
+        projectiles[1].destroy();
+      }
+    }
+  },
+
+  render(ctx) {
+    const camOff = this.camera.getOffset();
+    const stage = STAGE_DATA[this.stageIdx];
+
+    ctx.save();
+    ctx.translate(Math.round(camOff.x * 0), Math.round(camOff.y));
+    const diffStageKey = BgImageStore.stageKeyForDifficulty(arcadeState.difficulty);
+    if (!BgImageStore.draw(ctx, diffStageKey)) {
+      stage.drawBg(ctx, this.camera.x);
+    }
+    ctx.restore();
+
+    this.p1.render(ctx, camOff);
+    this.p2.render(ctx, camOff);
+
+    for (let p of projectiles) p.render(ctx, camOff);
+
+    particles.render(ctx);
+
+    this.renderHUD(ctx);
+
+    this.comboCounter.render(ctx);
+
+    const needImported = [this.p1 && this.p1.charId, this.p2 && this.p2.charId].some((id) => ACTIVE_CHARS.includes(id));
+    const importedReady = ACTIVE_CHARS.every((id) => {
+      const used = (this.p1 && this.p1.charId === id) || (this.p2 && this.p2.charId === id);
+      return !used || SpriteStore.isReady(id);
+    });
+    if (needImported && !importedReady) {
+      const p = Math.round(SpriteStore.progress() * 100);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+      drawText(ctx, 'LOADING SPRITES', CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 - 6, 5, '#FFFFFF', 'center');
+      drawText(ctx, `${p}%`, CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 + 6, 4, '#FFDD66', 'center');
+    }
+
+    if (this.roundMgr.phase === 'roundStart') {
+      const t = this.roundMgr.phaseTimer;
+      if (t > CFG.FIGHT_TEXT_FRAMES) {
+        const scale = easeOutCubic(1 - (t - CFG.FIGHT_TEXT_FRAMES) / (CFG.ROUND_TEXT_FRAMES - CFG.FIGHT_TEXT_FRAMES));
+        ctx.save();
+        ctx.translate(CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 - 10);
+        ctx.scale(scale * 2, scale * 2);
+        drawText(ctx, `ROUND ${this.roundMgr.round}`, 0, 0, 8, '#FFFFFF', 'center');
+        ctx.restore();
+      } else {
+        const scale = easeOutCubic(1 - t / CFG.FIGHT_TEXT_FRAMES);
+        ctx.save();
+        ctx.translate(CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 - 10);
+        ctx.scale(scale * 2 + 0.5, scale * 2 + 0.5);
+        drawText(ctx, 'FIGHT!', 0, 0, 10, '#FF4444', 'center');
+        ctx.restore();
+      }
+    }
+
+    if (this.roundMgr.phase === 'ko') {
+      const t = this.roundMgr.phaseTimer;
+      if (t > 60) {
+        drawText(ctx, this.roundMgr.timerValue <= 0 ? 'TIME UP!' : 'K.O.!', CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 - 10, 12, '#FF2222', 'center');
+      } else {
+        const winnerName = this.roundMgr.p1Wins > this.roundMgr.p2Wins ? this.p1.data.name :
+                           (this.roundMgr.p2Wins > this.roundMgr.p1Wins ? this.p2.data.name : 'DRAW');
+        drawText(ctx, `${winnerName} WINS!`, CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 - 10, 8, '#FFCC00', 'center');
+        if (this.roundMgr.isPerfect) {
+          drawText(ctx, 'PERFECT!', CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 + 5, 6, '#FFFF00', 'center');
+        }
+      }
+    }
+
+    if (this.roundMgr.phase === 'roundResult') {
+      // FIX #19: Show winner + updated win marks for 1.5s between rounds.
+      const winnerName = this.roundMgr.lastRoundWinner === 0 ? this.p1.data.name :
+                         (this.roundMgr.lastRoundWinner === 1 ? this.p2.data.name : 'DRAW');
+      drawText(ctx, `${winnerName} ROUND WIN`, CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 - 10, 8, '#FFDD55', 'center');
+      drawText(ctx, `★ ${this.roundMgr.p1Wins} - ${this.roundMgr.p2Wins} ★`, CFG.INTERNAL_W / 2, CFG.INTERNAL_H / 2 + 5, 6, '#FFFFFF', 'center');
+    }
+
+    if (this.flashAlpha > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.flashAlpha})`;
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    }
+
+    this.renderSuperCutin(ctx); // FIX #55
+
+    if (this.paused) {
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+      drawText(ctx, 'PAUSED', CFG.INTERNAL_W / 2, 40, 10, '#FFFFFF', 'center');
+      const items = ['RESUME', 'QUIT TO TITLE'];
+      for (let i = 0; i < items.length; i++) {
+        const sel = i === this.pauseCursor;
+        drawText(ctx, (sel ? '► ' : '  ') + items[i], CFG.INTERNAL_W / 2, 65 + i * 12, 6, sel ? '#FFFFFF' : '#888888', 'center');
+      }
+    }
+
+    if (GAME.DEBUG) {
+      drawText(ctx, `FPS: ${GAME.measuredFps || 60}`, CFG.INTERNAL_W - 5, CFG.INTERNAL_H - 5, 3, '#00FF00', 'right', false);
+    }
+  },
+
+  renderHUD(ctx) {
+    // FIX #76: Richer HUD rendering with layered panels, framed bars, and animated accents.
+    const W = CFG.INTERNAL_W;
+    const topH = 24;
+    const barW = 84;
+    const barH = 6;
+    const barY = 7;
+    const p1BarX = 30;
+    const p2BarX = W - 30 - barW;
+    const now = Date.now();
+
+    const drawFaceIcon = (x, y, charId, faceRight) => {
+      const pal = PALETTE[charId];
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#101624';
+      ctx.fillRect(-7, -7, 14, 14);
+      ctx.fillStyle = '#CFD8EA';
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.fillStyle = '#0C111B';
+      ctx.fillRect(-7, -7, 14, 14);
+      if (!faceRight) ctx.scale(-1, 1);
+      ctx.fillStyle = pal.outline;
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.fillStyle = pal.skin;
+      ctx.fillRect(-4, -4, 8, 7);
+      if (pal.hair) {
+        ctx.fillStyle = pal.hair;
+        ctx.fillRect(-4, -5, 8, 3);
+      }
+      ctx.fillStyle = pal.main;
+      ctx.fillRect(-5, 2, 10, 3);
+      ctx.restore();
+    };
+
+    const getHpColor = (r) => r > 0.5 ? '#1EDB3A' : (r > 0.25 ? '#F0C531' : '#E84C4C');
+    const drawHpBar = (x, ratio, actRatio, mirror) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fillStyle = '#283548';
+      ctx.fillRect(x, barY, barW, barH);
+      ctx.fillStyle = '#A7B5CC';
+      const trailW = barW * clamp(ratio, 0, 1);
+      if (mirror) ctx.fillRect(x + barW - trailW, barY, trailW, barH);
+      else ctx.fillRect(x, barY, trailW, barH);
+      ctx.fillStyle = getHpColor(actRatio);
+      const hpW = barW * clamp(actRatio, 0, 1);
+      if (mirror) ctx.fillRect(x + barW - hpW, barY, hpW, barH);
+      else ctx.fillRect(x, barY, hpW, barH);
+      if (actRatio <= 0.25 && Math.floor(now / 220) % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,80,80,0.3)';
+        if (mirror) ctx.fillRect(x + barW - hpW, barY, hpW, barH);
+        else ctx.fillRect(x, barY, hpW, barH);
+      }
+    };
+
+    const topGrad = ctx.createLinearGradient(0, 0, 0, topH);
+    topGrad.addColorStop(0, 'rgba(32,48,72,0.88)');
+    topGrad.addColorStop(1, 'rgba(18,24,34,0.72)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, W, topH);
+    ctx.fillStyle = 'rgba(190,216,255,0.28)';
+    ctx.fillRect(0, 0, W, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, topH - 1, W, 1);
+
+    drawFaceIcon(12, barY + 2, this.p1.charId, true);
+    drawFaceIcon(W - 12, barY + 2, this.p2.charId, false);
+
+    const p1Ratio = this.p1.displayHp / CFG.MAX_HP;
+    const p2Ratio = this.p2.displayHp / CFG.MAX_HP;
+    const p1ActRatio = this.p1.hp / CFG.MAX_HP;
+    const p2ActRatio = this.p2.hp / CFG.MAX_HP;
+    drawHpBar(p1BarX, p1Ratio, p1ActRatio, false);
+    drawHpBar(p2BarX, p2Ratio, p2ActRatio, true);
+
+    const timerW = 22;
+    const timerX = Math.floor(W / 2 - timerW / 2);
+    const timerPulse = Math.sin(now * 0.012) * 0.5 + 0.5;
+    ctx.fillStyle = '#1A0606';
+    ctx.fillRect(timerX - 1, 2, timerW + 2, 12);
+    ctx.fillStyle = `rgba(98,16,16,${0.78 + timerPulse * 0.12})`;
+    ctx.fillRect(timerX, 3, timerW, 10);
+    ctx.fillStyle = 'rgba(255,220,220,0.2)';
+    ctx.fillRect(timerX, 3, timerW, 2);
+    drawText(ctx, String(this.roundMgr.timerValue).padStart(2, '0'), W / 2, 8, 8, '#FFFFFF', 'center');
+
+    const drawRoundPip = (x, y, lit) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 2);
+      ctx.lineTo(x + 2, y);
+      ctx.lineTo(x, y + 2);
+      ctx.lineTo(x - 2, y);
+      ctx.closePath();
+      ctx.fillStyle = lit ? '#FFD44A' : '#556070';
+      ctx.fill();
+      if (lit) {
+        ctx.fillStyle = 'rgba(255,240,170,0.4)';
+        ctx.fillRect(x - 1, y - 2, 2, 1);
+      }
+    };
+    for (let i = 0; i < CFG.ROUNDS_TO_WIN; i++) {
+      drawRoundPip(20 + i * 6, barY + 2, i < this.roundMgr.p1Wins);
+      drawRoundPip(W - 20 - i * 6, barY + 2, i < this.roundMgr.p2Wins);
+    }
+
+    ctx.fillStyle = 'rgba(8,14,24,0.75)';
+    ctx.fillRect(p1BarX - 1, 14, 42, 6);
+    ctx.fillRect(W - (p1BarX - 1) - 42, 14, 42, 6);
+    drawText(ctx, this.p1.data.name, p1BarX + 1, 17, 3.1, '#E9F2FF', 'left');
+    drawText(ctx, this.p2.data.name, p2BarX + barW - 1, 17, 3.1, '#E9F2FF', 'right');
+
+    const mW = 56;
+    const mH = 5;
+    const mY = CFG.INTERNAL_H - 9;
+    const p1mx = 6;
+    const p2mx = W - 6 - mW;
+    const p1mr = this.p1.superMeter / CFG.SUPER_MAX;
+    const p2mr = this.p2.superMeter / CFG.SUPER_MAX;
+    const fullPulse = Math.sin(now * 0.02) * 0.5 + 0.5;
+
+    const drawSuperBar = (x, ratio, mirror, ready) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x - 1, mY - 1, mW + 2, mH + 2);
+      ctx.fillStyle = '#3C3C3C';
+      ctx.fillRect(x, mY, mW, mH);
+      const glowAlpha = ready ? (0.72 + fullPulse * 0.25) : 1;
+      ctx.fillStyle = ready ? `rgba(255,215,90,${glowAlpha})` : '#4CB2FF';
+      const fillW = mW * clamp(ratio, 0, 1);
+      if (mirror) ctx.fillRect(x + mW - fillW, mY, fillW, mH);
+      else ctx.fillRect(x, mY, fillW, mH);
+      if (ready) {
+        ctx.fillStyle = 'rgba(255,245,170,0.35)';
+        if (mirror) ctx.fillRect(x + mW - fillW, mY, fillW, 1);
+        else ctx.fillRect(x, mY, fillW, 1);
+      }
+    };
+
+    drawSuperBar(p1mx, p1mr, false, p1mr >= 1);
+    drawSuperBar(p2mx, p2mr, true, p2mr >= 1);
+    drawText(ctx, 'SUPER', p1mx, mY - 3, 2.8, '#A6D7FF', 'left');
+    drawText(ctx, 'SUPER', p2mx + mW, mY - 3, 2.8, '#A6D7FF', 'right');
+    if (p1mr >= 1) drawText(ctx, 'SPACE', p1mx + mW + 3, mY + 1, 2.5, '#FFE177', 'left');
+    if (p2mr >= 1) drawText(ctx, 'SPACE', p2mx - 3, mY + 1, 2.5, '#FFE177', 'right');
+  }
+};
+
+sceneManager.add('battle', battleScene);
+
+// Ending Scene
+sceneManager.add('ending', {
+  timer: 0,
+  enter() { this.timer = 0; SaveManager.updateScore(arcadeState.playerChar, arcadeState.difficulty, arcadeState.score); },
+  exit() {},
+  update() {
+    this.timer++;
+    if (this.timer > 60 && inputManager.wasPressed(KEYS.CONFIRM)) sceneManager.go('title');
+    inputManager.update(true);
+  },
+  render(ctx) {
+    ctx.fillStyle = '#0A0A1A';
+    ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+
+    const ch = CHARACTERS[arcadeState.playerChar];
+    const pal = PALETTE[arcadeState.playerChar];
+
+    drawText(ctx, '- CONGRATULATIONS -', CFG.INTERNAL_W / 2, 15, 7, '#FFCC00', 'center');
+
+    ctx.fillStyle = pal.main;
+    ctx.fillRect(CFG.INTERNAL_W / 2 - 8, 25, 16, 30);
+    ctx.fillStyle = pal.skin;
+    ctx.fillRect(CFG.INTERNAL_W / 2 - 5, 20, 10, 8);
+
+    const lines = ch.ending;
+    for (let i = 0; i < lines.length; i++) {
+      const alpha = clamp((this.timer - 60 - i * 30) / 30, 0, 1);
+      ctx.globalAlpha = alpha;
+      drawText(ctx, lines[i], CFG.INTERNAL_W / 2, 65 + i * 10, 4, '#CCCCCC', 'center');
+    }
+    ctx.globalAlpha = 1;
+
+    drawText(ctx, `FINAL SCORE: ${arcadeState.score.toLocaleString()}`, CFG.INTERNAL_W / 2, 100, 5, '#FFFF00', 'center');
+
+    if (this.timer > 90 && this.timer % 60 < 40) {
+      drawText(ctx, 'PRESS ENTER', CFG.INTERNAL_W / 2, 120, 4, '#888888', 'center');
+    }
+  }
+});
+
+// Game Over Scene
+sceneManager.add('gameOver', {
+  timer: 0,
+  enter() { this.timer = 0; SaveManager.updateScore(arcadeState.playerChar, arcadeState.difficulty, arcadeState.score); },
+  exit() {},
+  update() {
+    this.timer++;
+    if (this.timer > 60 && inputManager.wasPressed(KEYS.CONFIRM)) sceneManager.go('title');
+    inputManager.update(true);
+  },
+  render(ctx) {
+    ctx.fillStyle = '#1A0A0A';
+    ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+
+    const pulse = 1 + Math.sin(this.timer * 0.08) * 0.03;
+    ctx.save();
+    ctx.translate(CFG.INTERNAL_W / 2, 40);
+    ctx.scale(pulse, pulse);
+    drawText(ctx, 'GAME OVER', 0, 0, 12, '#CC2222', 'center');
+    ctx.restore();
+
+    drawText(ctx, `SCORE: ${arcadeState.score.toLocaleString()}`, CFG.INTERNAL_W / 2, 70, 6, '#FFCC00', 'center');
+    drawText(ctx, `MATCH ${arcadeState.currentMatch + 1} / ${ACTIVE_CHARS.length}`, CFG.INTERNAL_W / 2, 85, 4, '#888888', 'center');
+
+    if (this.timer > 60 && this.timer % 60 < 40) {
+      drawText(ctx, 'PRESS ENTER TO CONTINUE', CFG.INTERNAL_W / 2, 110, 4, '#888888', 'center');
+    }
+  }
+});
+
+// Records Scene
+sceneManager.add('records', {
+  timer: 0,
+  enter() { this.timer = 0; },
+  exit() {},
+  update() {
+    this.timer++;
+    if (inputManager.wasPressed(KEYS.CONFIRM) || inputManager.wasPressed(KEYS.PAUSE)) sceneManager.go('title');
+    inputManager.update(true);
+  },
+  render(ctx) {
+    ctx.fillStyle = '#0A0A1A';
+    ctx.fillRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    drawText(ctx, 'HIGH SCORES', CFG.INTERNAL_W / 2, 12, 8, '#FFCC00', 'center');
+
+    const data = SaveManager.load();
+    const chars = ACTIVE_CHARS;
+    const diffs = ['easy', 'normal', 'hard'];
+
+    drawText(ctx, '', 30, 28, 3, '#888888', 'left');
+    for (let d = 0; d < diffs.length; d++) {
+      drawText(ctx, diffs[d].toUpperCase(), 100 + d * 50, 28, 3, '#888888', 'center');
+    }
+
+    for (let c = 0; c < chars.length; c++) {
+      const ch = CHARACTERS[chars[c]];
+      drawText(ctx, ch.name, 40, 40 + c * 15, 4, '#FFFFFF', 'left');
+      for (let d = 0; d < diffs.length; d++) {
+        const score = data.records[chars[c]] ? (data.records[chars[c]][diffs[d]] || 0) : 0;
+        const scoreStr = score > 0 ? score.toLocaleString() : '---';
+        drawText(ctx, scoreStr, 100 + d * 50, 40 + c * 15, 3, score > 0 ? '#FFFF88' : '#444444', 'center');
+      }
+    }
+
+    drawText(ctx, 'ENTER / ESC: BACK', CFG.INTERNAL_W / 2, CFG.INTERNAL_H - 8, 3, '#555555', 'center');
+  }
+});
+
+/* ===== SECTION 11: STAGES (handled in STAGE_DATA above) ===== */
+
+/* ===== SECTION 12: CHARACTER SPRITES (handled in Fighter.render) ===== */
+
+/* ===== SECTION 13: SAVE/LOAD ===== */
+
+const SaveManager = {
+  KEY: 'RISING_FIST_SAVE_V1',
+  defaultData() {
+    return {
+      version: 1,
+      records: {
+        kenji: { easy:0, normal:0, hard:0 },
+        vance: { easy:0, normal:0, hard:0 },
+        meilin: { easy:0, normal:0, hard:0 }
+      },
+      totalPlayTime: 0, totalMatches: 0, lastPlayed: null
+    };
+  },
+  load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (!raw) return this.defaultData();
+      const data = JSON.parse(raw);
+      if (!data || data.version !== 1) return this.defaultData();
+      if (!data.records) data.records = this.defaultData().records;
+      for (let c of ACTIVE_CHARS) {
+        if (!data.records[c]) data.records[c] = { easy:0, normal:0, hard:0 };
+      }
+      return data;
+    } catch(e) {
+      return this.defaultData();
+    }
+  },
+  save(data) {
+    try { localStorage.setItem(this.KEY, JSON.stringify(data)); } catch(e) {}
+  },
+  updateScore(charId, diff, score) {
+    const data = this.load();
+    if (data.records[charId] && score > (data.records[charId][diff] || 0)) {
+      data.records[charId][diff] = score;
+    }
+    data.totalMatches++;
+    data.lastPlayed = new Date().toISOString();
+    this.save(data);
+  },
+  reset() {
+    try { localStorage.removeItem(this.KEY); } catch(e) {}
+  }
+};
+
+/* ===== SECTION 14: BOOTSTRAP ===== */
+
+(function boot() {
+  const displayCanvas = document.getElementById('game');
+  displayCanvas.width = CFG.DISPLAY_W;
+  displayCanvas.height = CFG.DISPLAY_H;
+  const displayCtx = displayCanvas.getContext('2d');
+
+  const internalCanvas = document.createElement('canvas');
+  // FIX #21: Render at higher offscreen resolution to reduce jagged/rough visuals.
+  internalCanvas.width = CFG.INTERNAL_W * CFG.RENDER_SCALE;
+  internalCanvas.height = CFG.INTERNAL_H * CFG.RENDER_SCALE;
+  const ctx = internalCanvas.getContext('2d');
+  ctx.setTransform(CFG.RENDER_SCALE, 0, 0, CFG.RENDER_SCALE, 0, 0);
+  SpriteStore.init(); // FIX #29
+  BgImageStore.init(); // FIX #53
+  SuperVideoStore.init(); // FIX #55
+  SAImageStore.init(); // FIX #80
+
+  GAME.measuredFps = 60;
+  let fpsFrames = 0, fpsTime = 0;
+  let lastTime = performance.now();
+  let accumulator = 0;
+
+  sceneManager.go('title');
+
+  function gameLoop(timestamp) {
+    requestAnimationFrame(gameLoop);
+
+    const elapsed = timestamp - lastTime;
+    lastTime = timestamp;
+    accumulator += elapsed;
+
+    fpsFrames++;
+    fpsTime += elapsed;
+    if (fpsTime >= 1000) {
+      GAME.measuredFps = fpsFrames;
+      fpsFrames = 0;
+      fpsTime = 0;
+    }
+
+    let updates = 0;
+    while (accumulator >= CFG.FRAME_TIME && updates < 4) {
+      sceneManager.update();
+      accumulator -= CFG.FRAME_TIME;
+      updates++;
+    }
+    if (updates === 0 && accumulator > CFG.FRAME_TIME * 0.5) {
+      sceneManager.update();
+      accumulator = 0;
+    }
+
+    ctx.clearRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
+    sceneManager.render(ctx);
+
+    displayCtx.imageSmoothingEnabled = true; // FIX #21
+    displayCtx.clearRect(0, 0, CFG.DISPLAY_W, CFG.DISPLAY_H);
+    displayCtx.drawImage(internalCanvas, 0, 0);
+  }
+
+  requestAnimationFrame(gameLoop);
+})();
+
+</script>
+</body>
+</html>

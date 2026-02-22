@@ -5,7 +5,8 @@ const GAMES_DB = {
         description: '4人の女子との恋愛シミュレーションゲームです。\n全員との[ハッピーエンド]を目指しましょう！',
         controls: '・マウスクリック または タッチ：選択や会話を進める',
         bugs: '＜バグ1＞\n1日が終わった時に「とじる」ボタンが押せないバグが発生\n\n＜解決策1＞\n・セーブをした状態でブラウザをリロードし、ロードする（※同じ日にちが繰り返されます）\n・または、画面を拡大（Ctrl + / Cmd +）することで押せるようになる場合があります',
-        aspectRatio: '1280 / 720'
+        aspectRatio: '1280 / 720',
+        screenshots: ['13_LSG/screenshot1.jpg', '13_LSG/screenshot2.jpg', '13_LSG/screenshot3.jpg']
     },
     'spelunker': {
         title: 'Spelunker Adventure',
@@ -13,7 +14,17 @@ const GAMES_DB = {
         description: '深い洞窟を探検し、お化けを避けてお宝を集めるアクションゲーム。\n最深部を目指してハイスコアを獲得しよう。',
         controls: '・十字キー：移動、はしごの昇り降り\n・Xキー：マシンガン (コウモリや幽霊への攻撃)\n・上＋Xキー：フラッシュ (全体攻撃)\n・下＋Xキー：爆弾 (壁を壊す)',
         bugs: '・はしごの当たり判定が少し狭い場合があります\n・壁の中にいる状態で爆弾を使用すると不具合が起きる場合があります',
-        aspectRatio: '4/3' /* Spelunkerは少し縦横比が違う可能性があるため設定を持たせる */
+        aspectRatio: '4/3', /* Spelunkerは少し縦横比が違う可能性があるため設定を持たせる */
+        screenshots: ['16_spelunker/screenshot1.jpg', '16_spelunker/screenshot2.jpg', '16_spelunker/screenshot3.jpg']
+    },
+    'risingfist': {
+        title: 'ライジングフィスト',
+        src: '14_ライジングフィスト/index.html',
+        description: '迫り来る敵を倒す爽快アクションゲーム。コンボを繋げてハイスコアを狙え！',
+        controls: '・WASD または 矢印キー：移動\n・スペース または Zキー：攻撃',
+        bugs: '特になし',
+        aspectRatio: '16/9',
+        screenshots: ['14_ライジングフィスト/screenshot1.jpg', '14_ライジングフィスト/screenshot2.jpg', '14_ライジングフィスト/screenshot3.jpg']
     }
 };
 
@@ -80,6 +91,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('game-description').innerText = gameData.description;
     document.getElementById('game-controls').innerText = gameData.controls;
     document.getElementById('game-bugs').innerText = gameData.bugs;
+
+    // Load Screenshots
+    const gallery = document.getElementById('screenshot-gallery');
+    if (gameData.screenshots && gameData.screenshots.length > 0) {
+        gameData.screenshots.forEach(imgPath => {
+            const imgEl = document.createElement('img');
+            imgEl.src = imgPath;
+            imgEl.className = 'screenshot-img';
+            imgEl.alt = `${gameData.title} screenshot`;
+            gallery.appendChild(imgEl);
+        });
+    }
 
     // Initialize Comments
     initComments(gameId);
