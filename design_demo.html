@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jipico's Game Portal - Design Concept</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Outfit:wght@400;700;900&family=Zen+Maru+Gothic:wght@400;700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #a855f7;
+            --secondary: #14b8a6;
+            --bg-dark: #0a0a0c;
+            --card-bg: rgba(20, 20, 25, 0.7);
+            --accent-pink: #ff2d55;
+            --font-main: 'Outfit', 'Zen Maru Gothic', sans-serif;
+            --font-accent: 'DotGothic16', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            /* システム側で生成したテクスチャ背景を適用 */
+            background-image: url('indie_game_ui_texture_bg_1771804584390.png');
+            background-attachment: fixed;
+            background-size: cover;
+            color: #fff;
+            font-family: var(--font-main);
+            overflow-x: hidden;
+        }
+
+        header {
+            padding: 2rem;
+            position: absolute;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-accent);
+            font-size: 1.8rem;
+            color: #fff;
+            text-shadow: 0 0 10px var(--primary);
+            letter-spacing: 2px;
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding: 0 5%;
+            overflow: hidden;
+        }
+
+        .hero-visual {
+            position: absolute;
+            right: -5%;
+            top: 0;
+            width: 65%;
+            height: 100%;
+            /* キービジュアル画像 */
+            background-image: url('cyberpunk_japanese_game_portal_hero_1771804569040.png');
+            background-size: cover;
+            background-position: center;
+            mask-image: linear-gradient(to right, transparent, black 40%);
+            -webkit-mask-image: linear-gradient(to right, transparent, black 40%);
+            z-index: 1;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 10;
+            max-width: 600px;
+        }
+
+        .hero-content h1 {
+            font-size: 5.5rem;
+            font-weight: 900;
+            line-height: 0.9;
+            margin-bottom: 2rem;
+            text-transform: uppercase;
+            letter-spacing: -2px;
+        }
+
+        .title-jp {
+            display: block;
+            font-size: 2.5rem;
+            font-family: var(--font-accent);
+            background: linear-gradient(45deg, var(--primary), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        .hero-content p {
+            font-size: 1.2rem;
+            color: #ccc;
+            margin-bottom: 3rem;
+            line-height: 1.6;
+            border-left: 4px solid var(--secondary);
+            padding-left: 1.5rem;
+        }
+
+        .btn-main {
+            display: inline-block;
+            padding: 1.2rem 3rem;
+            background: var(--primary);
+            color: #fff;
+            text-decoration: none;
+            font-weight: 900;
+            font-size: 1.1rem;
+            border-radius: 4px;
+            box-shadow: 4px 4px 0 var(--secondary);
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+
+        .btn-main:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 var(--secondary), 0 0 20px var(--primary);
+        }
+
+        /* Showcase Section */
+        .showcase {
+            padding: 10rem 5%;
+            background: rgba(10, 10, 12, 0.8);
+            position: relative;
+            z-index: 10;
+        }
+
+        .section-header {
+            margin-bottom: 5rem;
+            display: flex;
+            align-items: baseline;
+            gap: 2rem;
+        }
+
+        .section-header h2 {
+            font-size: 3rem;
+            font-weight: 900;
+        }
+
+        .section-header span {
+            font-family: var(--font-accent);
+            color: var(--secondary);
+        }
+
+        .game-grid-alt {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 4rem;
+        }
+
+        .main-feat {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .feat-img {
+            height: 400px;
+            background: #222;
+        }
+
+        .feat-info {
+            padding: 3rem;
+        }
+
+        .feat-info h3 {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 0.4rem 1rem;
+            background: var(--secondary);
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Ambient elements */
+        .ambient-light {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+            top: 20%;
+            left: -10%;
+            pointer-events: none;
+        }
+
+        @media (max-width: 1024px) {
+            .hero-visual {
+                width: 100%;
+                opacity: 0.4;
+                mask-image: none;
+                -webkit-mask-image: none;
+            }
+
+            .hero-content h1 {
+                font-size: 3.5rem;
+            }
+
+            .game-grid-alt {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ambient-light"></div>
+
+    <header>
+        <div class="logo">じぴこのゲームポータル</div>
+        <nav></nav>
+    </header>
+
+    <section class="hero">
+        <div class="hero-visual"></div>
+        <div class="hero-content">
+            <span class="title-jp">世界を変える、インディーズ。</span>
+            <h1>Jipico's<br>Game<br>Portal</h1>
+            <p>
+                AIが描く未来、人間が刻む情熱。<br>
+                ここでは、境界線を越えた新しい遊びが待っている。
+            </p>
+            <a href="#showcase" class="btn-main">Enter the Portal</a>
+        </div>
+    </section>
+
+    <section id="showcase" class="showcase">
+        <div class="section-header">
+            <h2>NEW GAMES</h2>
+            <span>最新のインディーズ作品</span>
+        </div>
+
+        <div class="game-grid-alt">
+            <div class="main-feat">
+                <div class="feat-img">
+                    <!-- ここにゲームのスクショ等 -->
+                </div>
+                <div class="feat-info">
+                    <span class="tag">FEATURED</span>
+                    <h3>Cave Explorer</h3>
+                    <p>究極の洞窟探検アクション。光と闇が交錯する地下世界で、伝説の財宝を追い求めろ。</p>
+                </div>
+            </div>
+
+            <div class="side-list">
+                <p style="color: #666; font-style: italic;">...and more to explore.</p>
+            </div>
+        </div>
+    </section>
+
+</body>
+
+</html>
