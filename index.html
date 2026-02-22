@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Game Portal</title>
+    <meta name="description" content="自作のHTMLゲームをまとめたポータルサイト">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-animation"></div>
+    <header>
+        <div class="logo">Game<span class="highlight">Portal</span></div>
+        <nav>
+            <button class="login-btn">Login / Ranking (実装予定)</button>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <h1>Welcome to the <span class="highlight">Universe</span> of Games</h1>
+            <p>PLAY, COMPETE, AND CONQUER</p>
+        </section>
+
+        <section class="game-gallery">
+            <h2 class="section-title">Latest Games</h2>
+            <div class="grid">
+                <!-- Game Card 1 -->
+                <a href="#" class="game-card">
+                    <div class="game-image bg-gradient-1">
+                        <span class="game-icon">🎮</span>
+                    </div>
+                    <div class="game-info">
+                        <h3>Space Shooter</h3>
+                        <p>クラシックでレトロなスペースシューティングゲーム。</p>
+                        <span class="play-btn">Play Now</span>
+                    </div>
+                </a>
+
+                <!-- Game Card 2 -->
+                <a href="#" class="game-card">
+                    <div class="game-image bg-gradient-2">
+                        <span class="game-icon">🔦</span>
+                    </div>
+                    <div class="game-info">
+                        <h3>Spelunker Adventure</h3>
+                        <p>深い洞窟を探検し、お化けを避けてお宝を集めよう。</p>
+                        <span class="play-btn">Play Now</span>
+                    </div>
+                </a>
+
+                <!-- Placeholder Card -->
+                <a href="#" class="game-card empty-card">
+                    <div class="game-image">
+                        <span class="game-icon">+</span>
+                    </div>
+                    <div class="game-info">
+                        <h3>New Game</h3>
+                        <p>Coming soon...</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
