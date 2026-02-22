@@ -4,14 +4,16 @@ const GAMES_DB = {
         src: '13_LSG/index.html',
         description: 'クラシックでレトロなスペースシューティングゲーム。\n敵を倒してハイスコアを目指せ！',
         controls: '・WASD または 矢印キー：移動\n・スペースキー：射撃',
-        bugs: '特になし'
+        bugs: '特になし',
+        aspectRatio: '16/9'
     },
     'spelunker': {
         title: 'Spelunker Adventure',
         src: '16_spelunker/index.html',
         description: '深い洞窟を探検し、お化けを避けてお宝を集めるアクションゲーム。\n最深部を目指してハイスコアを獲得しよう。',
         controls: '・十字キー：移動、はしごの昇り降り\n・Xキー：マシンガン (コウモリや幽霊への攻撃)\n・上＋Xキー：フラッシュ (全体攻撃)\n・下＋Xキー：爆弾 (壁を壊す)',
-        bugs: '・はしごの当たり判定が少し狭い場合があります\n・壁の中にいる状態で爆弾を使用すると不具合が起きる場合があります'
+        bugs: '・はしごの当たり判定が少し狭い場合があります\n・壁の中にいる状態で爆弾を使用すると不具合が起きる場合があります',
+        aspectRatio: '4/3' /* Spelunkerは少し縦横比が違う可能性があるため設定を持たせる */
     }
 };
 
@@ -30,6 +32,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load Game Info
     document.title = `${gameData.title} | My Game Portal`;
     document.getElementById('game-title').textContent = gameData.title;
+
+    // アスペクト比の動的調整
+    const wrapper = document.querySelector('.game-wrapper');
+    if (gameData.aspectRatio) {
+        wrapper.style.aspectRatio = gameData.aspectRatio;
+    } else {
+        wrapper.style.aspectRatio = '16 / 9'; // default
+    }
+
     document.getElementById('game-iframe').src = gameData.src;
     document.getElementById('game-description').innerText = gameData.description;
     document.getElementById('game-controls').innerText = gameData.controls;
