@@ -19,12 +19,12 @@ const GAMES_DB = {
     },
     'risingfist': {
         title: 'ライジングフィスト',
-        src: '14_ライジングフィスト/index.html',
+        src: '14_risingfist/index.html',
         description: '迫り来る敵を倒す爽快アクションゲーム。コンボを繋げてハイスコアを狙え！',
         controls: '・WASD または 矢印キー：移動\n・スペース または Zキー：攻撃',
         bugs: '特になし',
         aspectRatio: '16/9',
-        screenshots: ['14_ライジングフィスト/screenshot1.jpg', '14_ライジングフィスト/screenshot2.jpg', '14_ライジングフィスト/screenshot3.jpg']
+        screenshots: ['14_risingfist/screenshot1.jpg', '14_risingfist/screenshot2.jpg', '14_risingfist/screenshot3.jpg']
     }
 };
 
