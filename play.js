@@ -1,11 +1,11 @@
 const GAMES_DB = {
     'lsg': {
-        title: 'Space Shooter',
+        title: '告白デスマーチ 修学旅行編',
         src: '13_LSG/index.html',
-        description: 'クラシックでレトロなスペースシューティングゲーム。\n敵を倒してハイスコアを目指せ！',
-        controls: '・WASD または 矢印キー：移動\n・スペースキー：射撃',
-        bugs: '特になし',
-        aspectRatio: '16/9'
+        description: '4人の女子との恋愛シミュレーションゲームです。\n全員との[ハッピーエンド]を目指しましょう！',
+        controls: '・マウスクリック または タッチ：選択や会話を進める',
+        bugs: '＜バグ1＞\n1日が終わった時に「とじる」ボタンが押せないバグが発生\n\n＜解決策1＞\n・セーブをした状態でブラウザをリロードし、ロードする（※同じ日にちが繰り返されます）\n・または、画面を拡大（Ctrl + / Cmd +）することで押せるようになる場合があります',
+        aspectRatio: '1280 / 720'
     },
     'spelunker': {
         title: 'Spelunker Adventure',
