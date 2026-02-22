@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Play Game | My Game Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="play.css">
+</head>
+
+<body>
+    <div class="background-animation"></div>
+    <header>
+        <a href="index.html" class="back-link">← ホームに戻る</a>
+        <div class="logo">Game<span class="highlight">Portal</span></div>
+    </header>
+
+    <main class="play-container">
+        <h1 id="game-title">Loading...</h1>
+
+        <div class="game-wrapper">
+            <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>
+        </div>
+
+        <div class="game-details">
+            <div class="info-section">
+                <h2>📖 ゲーム説明</h2>
+                <p id="game-description"></p>
+
+                <h3>🎮 操作方法</h3>
+                <p id="game-controls"></p>
+
+                <h3>🐛 既知のバグ・情報</h3>
+                <p id="game-bugs"></p>
+            </div>
+
+            <div class="comment-section">
+                <h2>💬 みんなのコメント (匿名機能テスト)</h2>
+                <p style="font-size:0.8rem; color:#888; margin-bottom:1rem;">
+                    ※現在はデモンストレーション用のため、ブラウザ内にのみ保存されます。将来的にはログイン機能と共に全体共有される予定です。</p>
+                <div class="comment-form">
+                    <input type="text" id="comment-name" placeholder="名無しさん (任意)" maxlength="20">
+                    <textarea id="comment-text" placeholder="ゲームの感想やアドバイスを書こう！" rows="3" required></textarea>
+                    <button id="submit-comment" class="submit-btn">コメントを送信</button>
+                </div>
+
+                <div id="comments-list" class="comments-list">
+                    <!-- コメントがここに追加される -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="play.js"></script>
+</body>
+
+</html>
