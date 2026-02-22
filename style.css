@@ -179,7 +179,16 @@ header {
     height: 220px;
     position: relative;
     overflow: hidden;
-    background-color: #111;
+    background-color: #000;
+}
+
+.thumbnail-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    pointer-events: none;
+    /* クリックを貫通させてカードのリンクを有効にする */
+    user-select: none;
 }
 
 .bg-gradient-1 {
