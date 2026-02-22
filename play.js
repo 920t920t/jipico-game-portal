@@ -33,15 +33,46 @@ document.addEventListener('DOMContentLoaded', () => {
     document.title = `${gameData.title} | My Game Portal`;
     document.getElementById('game-title').textContent = gameData.title;
 
-    // アスペクト比の動的調整
+    // アスペクト比とスケールの動的調整
     const wrapper = document.querySelector('.game-wrapper');
+    const iframe = document.getElementById('game-iframe');
+
+    // ゲーム描画サイズ（LSGなどは1280x720固定の可能性があるため）
+    const gameWidth = gameData.width || 1280;
+    const gameHeight = gameData.height || 720;
+
     if (gameData.aspectRatio) {
         wrapper.style.aspectRatio = gameData.aspectRatio;
     } else {
-        wrapper.style.aspectRatio = '16 / 9'; // default
+        wrapper.style.aspectRatio = `${gameWidth} / ${gameHeight}`;
     }
 
-    document.getElementById('game-iframe').src = gameData.src;
+    // ウィンドウサイズ変更時にiframeをスケールさせて中央にフィットさせる
+    function resizeIframe() {
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const scale = Math.min(
+            wrapperRect.width / gameWidth,
+            wrapperRect.height / gameHeight
+        );
+
+        // iframe自体のサイズを固定解像度に設定し、CSS transformで縮小・拡大する
+        iframe.style.width = `${gameWidth}px`;
+        iframe.style.height = `${gameHeight}px`;
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.transformOrigin = 'center center';
+
+        // transformで縮小した場合、不要な余白ができるため絶対配置で中央に固定する
+        iframe.style.position = 'absolute';
+        iframe.style.left = '50%';
+        iframe.style.top = '50%';
+        iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    }
+
+    window.addEventListener('resize', resizeIframe);
+
+    iframe.src = gameData.src;
+    iframe.onload = resizeIframe; // ロード完了時にも計算を実行
+
     document.getElementById('game-description').innerText = gameData.description;
     document.getElementById('game-controls').innerText = gameData.controls;
     document.getElementById('game-bugs').innerText = gameData.bugs;
