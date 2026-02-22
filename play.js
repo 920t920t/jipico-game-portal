@@ -58,14 +58,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // iframe自体のサイズを固定解像度に設定し、CSS transformで縮小・拡大する
         iframe.style.width = `${gameWidth}px`;
         iframe.style.height = `${gameHeight}px`;
+        iframe.style.transformOrigin = 'top left';
         iframe.style.transform = `scale(${scale})`;
-        iframe.style.transformOrigin = 'center center';
 
-        // transformで縮小した場合、不要な余白ができるため絶対配置で中央に固定する
+        // ラッパー内で余白を均等にして中央配置とするため、左上の起点を計算
+        const scaledWidth = gameWidth * scale;
+        const scaledHeight = gameHeight * scale;
+        const leftOffset = (wrapperRect.width - scaledWidth) / 2;
+        const topOffset = (wrapperRect.height - scaledHeight) / 2;
+
         iframe.style.position = 'absolute';
-        iframe.style.left = '50%';
-        iframe.style.top = '50%';
-        iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        iframe.style.left = `${leftOffset}px`;
+        iframe.style.top = `${topOffset}px`;
     }
 
     window.addEventListener('resize', resizeIframe);
