@@ -21,7 +21,7 @@ const GAMES_DB = {
         title: 'ライジングフィスト',
         src: '14_risingfist/index.html',
         description: '迫り来る敵を倒す爽快アクションゲーム。コンボを繋げてハイスコアを狙え！',
-        controls: '・WASD または 矢印キー：移動\n・スペース または Zキー：攻撃',
+        controls: '【移動】\nW：ジャンプ / A：左 / S：しゃがみ / D：右\n【攻撃・防御】\nU：弱パンチ / I：強パンチ / J：弱キック / K：強キック / H：ガード\n【特殊】\nSpace：スーパーアーツ / O：必殺技1 / L：必殺技2\nEnter：決定 / Esc：ポーズ',
         bugs: '特になし',
         aspectRatio: '16/9',
         screenshots: ['14_risingfist/screenshot1.jpg', '14_risingfist/screenshot2.jpg', '14_risingfist/screenshot3.jpg']
