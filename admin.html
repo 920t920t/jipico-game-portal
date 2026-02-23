@@ -565,24 +565,17 @@
         }
 
         async function deleteCommentAdmin(id) {
-            showDebugLog('削除開始 ID: ' + id);
-
-            // 確認ダイアログ（メッセージを短くして確実に反応させる）
-            if (!window.confirm('Delete?')) {
-                showDebugLog('削除がキャンセルされました。');
-                return;
-            }
+            console.log('--- DEL START ---', id);
+            showDebugLog('削除実行中 (ID: ' + id + ')');
 
             try {
-                showDebugLog('Supabaseクライアントを取得中...');
+                // 確実に最新のクライアントを取得
                 let client = (typeof supabase !== 'undefined' && supabase && supabase.from) ? supabase : null;
-                if (!client && typeof getDbClient === 'function') {
-                    client = getDbClient();
-                }
+                if (!client && typeof getDbClient === 'function') client = getDbClient();
 
                 if (!client || !client.from) {
-                    showDebugLog('クライアントの初期化に失敗しました。');
-                    throw new Error('Supabaseクライアントが初期化できていません。ページをリロードしてください。');
+                    showDebugLog('ERROR: クライアント初期化失敗');
+                    return;
                 }
 
                 showDebugLog('削除リクエストを送信中... ID: ' + id);
