@@ -108,16 +108,19 @@ header {
 
 .hero-visual {
     position: absolute;
-    right: -5%;
+    right: 0;
     top: 0;
-    width: 70%;
+    width: 60%;
     height: 100%;
-    background-image: url('cyberpunk_japanese_game_portal_hero_1771804569040.png');
+    background-image: url('jipico_character_pixel_bg_faded_v3_1771805781352.png');
     background-size: cover;
     background-position: center;
-    mask-image: linear-gradient(to right, transparent, black 50%);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 50%);
+    mask-image: linear-gradient(to right, transparent 5%, black 60%);
+    -webkit-mask-image: linear-gradient(to right, transparent 5%, black 60%);
     z-index: 1;
+    opacity: 0.6;
+    /* 主張を抑えるために透明度を調整 */
+    filter: saturate(0.8) brightness(0.9);
 }
 
 .hero-content {
