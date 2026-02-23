@@ -395,6 +395,8 @@ html,body{width:100%;height:100%;background:radial-gradient(circle at 15% 15%, #
   <div id="settings-panel">
     <h2>設定</h2>
     <div class="setting-row"><span>テキスト速度</span><select id="set-textspeed" onchange="App.updateSetting('textSpeed',this.value)"><option value="slow">遅い</option><option value="normal" selected>普通</option><option value="fast">速い</option><option value="instant">瞬間</option></select></div>
+    <div class="setting-row"><span>SE音量</span><div><input id="set-sevolume" type="range" min="0" max="100" step="1" value="80" oninput="document.getElementById('set-sevolume-val').textContent=this.value;App.updateSetting('seVolume',Number(this.value));"><span id="set-sevolume-val" style="display:inline-block;min-width:42px;text-align:right;margin-left:8px;">80</span></div></div>
+    <div class="setting-row"><span>BGMモード</span><select id="set-bgmmode" onchange="App.updateSetting('bgmMode',this.value)"><option value="8bit">8bit</option><option value="original">原音</option><option value="off">OFF</option></select></div>
     <div class="setting-row"><span>画面効果</span><select id="set-effects" onchange="App.updateSetting('effectsEnabled',this.value==='on')"><option value="on">ON</option><option value="off">OFF</option></select></div>
     <br>
     <button class="btn btn-small btn-secondary" onclick="UIManager.closeOverlay('settings-overlay')" style="display:block;margin:auto;">閉じる</button>
@@ -445,7 +447,7 @@ const CONFIG = {
   SAVE_KEY_PREFIX: 'kokuhaku_save_',
   SETTINGS_KEY: 'kokuhaku_settings',
   GALLERY_KEY: 'kokuhaku_gallery',
-  VERSION: '1.9.2',
+  VERSION: '1.9.3',
 
   WEATHERS: [
     { id:'sunny', icon:'☀️', luckMod:5 },
@@ -1561,59 +1563,323 @@ const TUTORIALS = {
 // ============================================================
 const AudioManager = {
   ctx: null,
-  volume: 0,
-  enabled: false,
+  volume: 0.8,
+  enabled: true,
+  bgmMode: '8bit',
+  sfxGain: null,
+  bgmGain: null,
+  _bgmTimer: null,
+  _bgmStep: 0,
+  _playingTheme: null,
+  _playingMode: null,
+  _desiredTheme: 'title',
+  _originalBgm: null,
 
   init() {
-    this.enabled = false;
+    this.enabled = true;
     this.ctx = null;
+    this.sfxGain = null;
+    this.bgmGain = null;
+    this._bgmTimer = null;
+    this._bgmStep = 0;
+    this._playingTheme = null;
+    this._playingMode = null;
+    this._desiredTheme = 'title';
+    this._originalBgm = null;
+    this._syncSettingsFromState();
+  },
+
+  _syncSettingsFromState() {
+    let settings = null;
+    try {
+      settings = StateManager && StateManager._state ? StateManager.get('settings') : null;
+    } catch (e) {}
+    if (!settings) {
+      try {
+        const raw = localStorage.getItem(CONFIG.SETTINGS_KEY);
+        if (raw) settings = JSON.parse(raw);
+      } catch (e) {}
+    }
+    const seVol = Number(settings && settings.seVolume);
+    this.volume = Number.isFinite(seVol) ? Math.max(0, Math.min(100, seVol)) / 100 : 0.8;
+    const mode = settings && typeof settings.bgmMode === 'string' ? settings.bgmMode : '8bit';
+    this.bgmMode = ['off', '8bit', 'original'].includes(mode) ? mode : '8bit';
+  },
+
+  applySettings(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    const seVol = Number(settings.seVolume);
+    if (Number.isFinite(seVol)) this.volume = Math.max(0, Math.min(100, seVol)) / 100;
+    if (typeof settings.bgmMode === 'string' && ['off', '8bit', 'original'].includes(settings.bgmMode)) {
+      this.bgmMode = settings.bgmMode;
+    }
+    this._applyGain();
+    this.syncBgmWithScreen();
   },
 
   ensureContext() {
-    return;
+    if (!this.enabled) return false;
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      this.ctx = new AC();
+      this.sfxGain = this.ctx.createGain();
+      this.bgmGain = this.ctx.createGain();
+      this.sfxGain.connect(this.ctx.destination);
+      this.bgmGain.connect(this.ctx.destination);
+      this._syncSettingsFromState();
+      this._applyGain();
+      this.syncBgmWithScreen();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    return true;
+  },
+
+  _applyGain() {
+    if (this.sfxGain) this.sfxGain.gain.value = Math.max(0, Math.min(1, this.volume * 0.9));
+    if (this.bgmGain) this.bgmGain.gain.value = Math.max(0, Math.min(1, this.volume * 0.35));
+    if (this._originalBgm) this._originalBgm.volume = Math.max(0, Math.min(1, this.volume * 0.38));
+  },
+
+  syncBgmWithScreen() {
+    const screen = UIManager && UIManager._activeScreen ? UIManager._activeScreen : 'title-screen';
+    let theme = 'title';
+    if (screen === 'game-screen') {
+      const phase = StateManager && StateManager._state ? StateManager.get('currentPhase') : 'DAY_START';
+      const tod = StateManager && StateManager._state ? StateManager.get('timeOfDay') : 'morning';
+      if (phase === 'DISASTER') theme = 'danger';
+      else if (tod === 'night') theme = 'night';
+      else theme = 'day';
+    } else if (screen === 'ending-screen') {
+      theme = 'ending';
+    } else {
+      theme = 'title';
+    }
+    this._desiredTheme = theme;
+    if (!this.ctx) return;
+    this._startBgm(theme);
+  },
+
+  _startBgm(theme) {
+    const mode = this.bgmMode;
+    if (mode === 'off') {
+      this.stopBgm();
+      this._playingMode = 'off';
+      this._playingTheme = theme;
+      return;
+    }
+    if (this._playingMode === mode && this._playingTheme === theme) return;
+    if (mode === 'original') this._startOriginalBgm(theme);
+    else this._start8bitBgm(theme);
+    this._playingMode = mode;
+    this._playingTheme = theme;
+  },
+
+  stopBgm() {
+    if (this._bgmTimer) {
+      clearInterval(this._bgmTimer);
+      this._bgmTimer = null;
+    }
+    this._bgmStep = 0;
+    if (this._originalBgm) {
+      try {
+        this._originalBgm.pause();
+        this._originalBgm.currentTime = 0;
+      } catch (e) {}
+      this._originalBgm = null;
+    }
+    this._playingTheme = null;
+    this._playingMode = null;
+  },
+
+  _startOriginalBgm(theme) {
+    if (this._bgmTimer) {
+      clearInterval(this._bgmTimer);
+      this._bgmTimer = null;
+      this._bgmStep = 0;
+    }
+    if (!this._originalBgm) {
+      this._originalBgm = new Audio('通常1.mp3');
+      this._originalBgm.loop = true;
+      this._originalBgm.preload = 'auto';
+    }
+    this._applyGain();
+    const p = this._originalBgm.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => {
+        this._originalBgm = null;
+        this._start8bitBgm(theme);
+        this._playingMode = '8bit';
+      });
+    }
+  },
+
+  _getBgmPattern(theme) {
+    const patterns = {
+      title: {
+        stepMs: 170,
+        noteLen: 0.14,
+        lead: [659, 784, 880, 784, 698, 784, 988, 1047, 988, 784, 698, 659, 0, 659, 784, 988],
+        bass: [165, 165, 196, 196, 147, 147, 196, 196, 165, 165, 147, 147, 131, 131, 147, 147],
+        noiseEvery: 8
+      },
+      day: {
+        stepMs: 165,
+        noteLen: 0.13,
+        lead: [523, 659, 784, 659, 587, 659, 784, 880, 784, 659, 587, 523, 587, 659, 698, 784],
+        bass: [131, 131, 147, 147, 165, 165, 147, 147, 131, 131, 123, 123, 110, 110, 123, 123],
+        noiseEvery: 6
+      },
+      night: {
+        stepMs: 190,
+        noteLen: 0.15,
+        lead: [440, 523, 587, 523, 494, 523, 659, 587, 523, 494, 440, 392, 440, 494, 523, 587],
+        bass: [110, 0, 110, 0, 98, 0, 110, 0, 123, 0, 110, 0, 98, 0, 110, 0],
+        noiseEvery: 0
+      },
+      danger: {
+        stepMs: 130,
+        noteLen: 0.1,
+        lead: [784, 740, 698, 659, 784, 740, 698, 622, 0, 784, 740, 698, 659, 622, 587, 554],
+        bass: [196, 196, 196, 196, 185, 185, 185, 185, 174, 174, 174, 174, 165, 165, 165, 165],
+        noiseEvery: 2
+      },
+      ending: {
+        stepMs: 210,
+        noteLen: 0.17,
+        lead: [523, 587, 659, 698, 659, 587, 523, 440, 392, 440, 523, 587, 659, 587, 523, 440],
+        bass: [131, 0, 147, 0, 165, 0, 147, 0, 131, 0, 123, 0, 110, 0, 98, 0],
+        noiseEvery: 0
+      }
+    };
+    return patterns[theme] || patterns.day;
+  },
+
+  _start8bitBgm(theme) {
+    if (this._originalBgm) {
+      try {
+        this._originalBgm.pause();
+        this._originalBgm.currentTime = 0;
+      } catch (e) {}
+      this._originalBgm = null;
+    }
+    if (this._bgmTimer) clearInterval(this._bgmTimer);
+    const pattern = this._getBgmPattern(theme);
+    this._bgmStep = 0;
+    this._bgmTimer = setInterval(() => {
+      if (!this.ctx || this.ctx.state !== 'running') return;
+      const i = this._bgmStep++;
+      const lead = pattern.lead[i % pattern.lead.length];
+      const bass = pattern.bass[i % pattern.bass.length];
+      if (lead > 0) this._tone('square', lead, pattern.noteLen, 0.12, this.bgmGain);
+      if (bass > 0) this._tone('triangle', bass, pattern.noteLen * 0.95, 0.09, this.bgmGain);
+      if (pattern.noiseEvery && i % pattern.noiseEvery === 0) this._noise(0.02, 0.025, this.bgmGain);
+    }, pattern.stepMs);
   },
 
   play(name) {
-    return;
+    if (!this.ensureContext()) return;
+    switch (name) {
+      case 'click':
+        this._tone('square', 1280, 0.028, 0.12, this.sfxGain);
+        this._tone('triangle', 920, 0.02, 0.06, this.sfxGain);
+        break;
+      case 'text_blip':
+        this._tone('triangle', 760, 0.012, 0.04, this.sfxGain);
+        break;
+      case 'menu_open':
+        this._arpeggio([330, 440, 554], 0.045, 0.08, 'triangle', this.sfxGain);
+        break;
+      case 'affection_up':
+        this._arpeggio([659, 831, 1047], 0.06, 0.1, 'square', this.sfxGain);
+        break;
+      case 'affection_down':
+        this._sweep('sawtooth', 620, 210, 0.16, 0.1, this.sfxGain);
+        break;
+      case 'day_start':
+        this._arpeggio([392, 523, 659, 784], 0.06, 0.08, 'triangle', this.sfxGain);
+        break;
+      case 'disaster':
+        this._noise(0.08, 0.1, this.sfxGain);
+        this._sweep('square', 460, 180, 0.2, 0.12, this.sfxGain);
+        break;
+      case 'disaster_clear':
+        this._arpeggio([523, 659, 784, 1047], 0.05, 0.1, 'square', this.sfxGain);
+        break;
+      case 'buy':
+        this._arpeggio([523, 659, 784], 0.05, 0.09, 'triangle', this.sfxGain);
+        break;
+      case 'error':
+        this._sweep('square', 280, 160, 0.16, 0.1, this.sfxGain);
+        break;
+      case 'confession':
+        this._arpeggio([440, 554, 659, 880], 0.08, 0.09, 'square', this.sfxGain);
+        this._tone('sine', 659, 0.32, 0.045, this.sfxGain);
+        break;
+      case 'punch':
+        this._noise(0.06, 0.16, this.sfxGain);
+        this._sweep('triangle', 180, 88, 0.1, 0.14, this.sfxGain);
+        break;
+      case 'kick':
+        this._noise(0.05, 0.12, this.sfxGain);
+        this._tone('triangle', 104, 0.09, 0.14, this.sfxGain);
+        this._sweep('sine', 130, 82, 0.08, 0.08, this.sfxGain);
+        break;
+      default:
+        this._tone('triangle', 660, 0.02, 0.05, this.sfxGain);
+    }
   },
 
-  _tone(type, freq, dur, vol) {
+  _tone(type, freq, dur, vol, outGain) {
+    if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = type; osc.frequency.value = freq;
-    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    const output = outGain || this.sfxGain || this.ctx.destination;
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(Math.max(0.0001, vol), this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
-    osc.connect(gain); gain.connect(this.ctx.destination);
-    osc.start(); osc.stop(this.ctx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(output);
+    osc.start();
+    osc.stop(this.ctx.currentTime + dur + 0.01);
   },
 
-  _sweep(type, f1, f2, dur, vol) {
+  _sweep(type, f1, f2, dur, vol, outGain) {
+    if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = type; osc.frequency.setValueAtTime(f1, this.ctx.currentTime);
+    const output = outGain || this.sfxGain || this.ctx.destination;
+    osc.type = type;
+    osc.frequency.setValueAtTime(f1, this.ctx.currentTime);
     osc.frequency.linearRampToValueAtTime(f2, this.ctx.currentTime + dur);
-    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.setValueAtTime(Math.max(0.0001, vol), this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
-    osc.connect(gain); gain.connect(this.ctx.destination);
-    osc.start(); osc.stop(this.ctx.currentTime + dur + 0.01);
+    osc.connect(gain);
+    gain.connect(output);
+    osc.start();
+    osc.stop(this.ctx.currentTime + dur + 0.01);
   },
 
-  _arpeggio(freqs, noteDur, vol) {
+  _arpeggio(freqs, noteDur, vol, wave, outGain) {
     freqs.forEach((f, i) => {
-      setTimeout(() => this._tone('sine', f, noteDur * 1.5, vol), i * noteDur * 1000);
+      setTimeout(() => this._tone(wave || 'square', f, noteDur * 1.3, vol, outGain), i * noteDur * 1000);
     });
   },
 
-  _noise(dur, vol) {
+  _noise(dur, vol, outGain) {
+    if (!this.ctx) return;
+    const output = outGain || this.sfxGain || this.ctx.destination;
     const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * dur, this.ctx.sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.55;
     const src = this.ctx.createBufferSource();
     const gain = this.ctx.createGain();
     src.buffer = buf;
-    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.setValueAtTime(Math.max(0.0001, vol), this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
-    src.connect(gain); gain.connect(this.ctx.destination);
+    src.connect(gain);
+    gain.connect(output);
     src.start();
   }
 };
@@ -1676,6 +1942,7 @@ function createInitialState(playerName) {
     settings: {
       textSpeed: 'normal',
       seVolume: 80,
+      bgmMode: '8bit',
       effectsEnabled: true
     },
 
@@ -1783,6 +2050,7 @@ function sanitizeLoadedState(rawState) {
 
   if (!CONFIG.TEXT_SPEEDS[safe.settings.textSpeed]) safe.settings.textSpeed = 'normal';
   safe.settings.seVolume = Math.floor(clampNumber(safe.settings.seVolume, 0, 100, 80));
+  safe.settings.bgmMode = ['off','8bit','original'].includes(safe.settings.bgmMode) ? safe.settings.bgmMode : '8bit';
   safe.settings.effectsEnabled = !!safe.settings.effectsEnabled;
 
   safe.stats.totalChoices = Math.floor(clampNumber(safe.stats.totalChoices, 0, 99999, 0));
@@ -1950,6 +2218,7 @@ const UIManager = {
       el.classList.add('active');
       this._activeScreen = id;
     }
+    AudioManager.syncBgmWithScreen();
   },
 
   updateHeader() {
@@ -2364,8 +2633,14 @@ const UIManager = {
     const s = StateManager.get('settings');
     if (s) {
       const ts = document.getElementById('set-textspeed');
+      const sv = document.getElementById('set-sevolume');
+      const svVal = document.getElementById('set-sevolume-val');
+      const bm = document.getElementById('set-bgmmode');
       const ef = document.getElementById('set-effects');
       if (ts) ts.value = s.textSpeed;
+      if (sv) sv.value = Number.isFinite(Number(s.seVolume)) ? String(s.seVolume) : '80';
+      if (svVal) svVal.textContent = Number.isFinite(Number(s.seVolume)) ? String(s.seVolume) : '80';
+      if (bm) bm.value = ['off','8bit','original'].includes(s.bgmMode) ? s.bgmMode : '8bit';
       if (ef) ef.value = s.effectsEnabled ? 'on' : 'off';
     }
     document.getElementById('settings-overlay').classList.add('active');
@@ -2697,6 +2972,12 @@ const DisasterEngine = {
   processDisasterChoice(disaster, optionIndex, heroineId) {
     const opt = disaster.options[optionIndex];
     const s = StateManager._state;
+
+    if (opt.type === 'physical') {
+      AudioManager.play(Math.random() < 0.5 ? 'punch' : 'kick');
+    } else if (opt.type === 'joke') {
+      AudioManager.play('click');
+    }
 
     // Apply stress
     StateManager.modify('player.stress', opt.stress);
@@ -4442,10 +4723,13 @@ window.App = {
         const settings = JSON.parse(savedSettings);
         if (settings && typeof settings === 'object') {
           if (CONFIG.TEXT_SPEEDS[settings.textSpeed]) s.settings.textSpeed = settings.textSpeed;
+          if (Number.isFinite(Number(settings.seVolume))) s.settings.seVolume = Math.max(0, Math.min(100, Math.floor(Number(settings.seVolume))));
+          if (typeof settings.bgmMode === 'string' && ['off', '8bit', 'original'].includes(settings.bgmMode)) s.settings.bgmMode = settings.bgmMode;
           if (typeof settings.effectsEnabled === 'boolean') s.settings.effectsEnabled = settings.effectsEnabled;
         }
       }
     } catch(e) {}
+    AudioManager.applySettings(s.settings);
 
     // Play prologue
     if (!s.flags.prologueDone) {
@@ -4492,6 +4776,7 @@ window.App = {
       const state = SaveManager.load(slot);
       if (state) {
         StateManager.loadState(state);
+        AudioManager.applySettings(StateManager.get('settings') || {});
         UIManager.closeOverlay('saveload-overlay');
         UIManager.showScreen('game-screen');
         UIManager.updateHeader();
@@ -4511,6 +4796,7 @@ window.App = {
 
   updateSetting(key, value) {
     StateManager.set(`settings.${key}`, value);
+    AudioManager.applySettings(StateManager.get('settings') || {});
     // Persist settings
     try {
       const s = StateManager.get('settings');
@@ -4618,6 +4904,11 @@ scaleGame();
 // ============================================================
 // INITIALIZATION
 // ============================================================
+AudioManager.init();
+AudioManager.syncBgmWithScreen();
+const unlockAudioOnce = () => AudioManager.ensureContext();
+window.addEventListener('pointerdown', unlockAudioOnce, { once: true });
+window.addEventListener('keydown', unlockAudioOnce, { once: true });
 console.log('告白デスマーチ 修学旅行編 ～30泊31日の恋と災難～ v' + CONFIG.VERSION);
 
 })();

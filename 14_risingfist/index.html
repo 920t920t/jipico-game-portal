@@ -624,7 +624,9 @@ const SuperVideoStore = {
   tryLoad(cacheKey, srcs) {
     if (!srcs || !srcs.length) return;
     const v = document.createElement('video');
-    v.muted = true;
+    // FIX #91: Keep SA video audio enabled at a lower mix level.
+    v.muted = false;
+    v.volume = 0.45;
     v.playsInline = true;
     v.loop = false;
     v.preload = 'auto';
@@ -1073,6 +1075,161 @@ class Camera {
   getOffset() { return { x: -this.x + this.shakeX, y: this.shakeY }; }
 }
 
+// FIX #85: Lightweight WebAudio engine (UI/attack SFX + optional 8-bit BGM).
+const AudioEngine = {
+  ctx: null,
+  master: null,
+  sfxGain: null,
+  musicGain: null,
+  noiseBuffer: null,
+  bgmStep: 0,
+  bgmFrame: 0,
+  bgmEnabled: false,
+  bgmStepFrames: 8,
+  leadSeq: [64,67,71,72,71,67,64,62,60,62,64,67,64,62,60,-1],
+  harmonySeq: [-1,59,-1,60,-1,59,-1,57,-1,55,-1,57,-1,55,-1,52],
+  bassSeq: [36,-1,36,-1,38,-1,43,-1,36,-1,36,-1,31,-1,33,-1],
+
+  ensureContext() {
+    if (this.ctx) return true;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return false;
+    this.ctx = new Ctx();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.82;
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = 0.45;
+    this.musicGain = this.ctx.createGain();
+    this.musicGain.gain.value = 0.14;
+    this.sfxGain.connect(this.master);
+    this.musicGain.connect(this.master);
+    this.master.connect(this.ctx.destination);
+
+    const len = Math.max(1, Math.floor(this.ctx.sampleRate * 0.24));
+    this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = this.noiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return true;
+  },
+
+  unlock() {
+    if (!this.ensureContext()) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (!this.bgmEnabled) {
+      this.bgmEnabled = true;
+      this.bgmStep = 0;
+      this.bgmFrame = 0;
+    }
+  },
+
+  midiToHz(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  },
+
+  tone(type, freq, dur, vol, opts = {}) {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const start = this.ctx.currentTime + (opts.delay || 0);
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(Math.max(30, freq), start);
+    if (opts.slide && opts.slide !== 1) {
+      osc.frequency.linearRampToValueAtTime(Math.max(30, freq * opts.slide), start + dur);
+    }
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.linearRampToValueAtTime(Math.max(0.0001, vol), start + Math.min(0.012, dur * 0.35));
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(gain);
+    gain.connect(opts.bus || this.sfxGain);
+    osc.start(start);
+    osc.stop(start + dur + 0.02);
+  },
+
+  noise(dur, vol, hpFreq = 900, opts = {}) {
+    if (!this.ctx || this.ctx.state !== 'running' || !this.noiseBuffer) return;
+    const start = this.ctx.currentTime + (opts.delay || 0);
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = hpFreq;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.linearRampToValueAtTime(Math.max(0.0001, vol), start + Math.min(0.008, dur * 0.4));
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    src.connect(hp);
+    hp.connect(gain);
+    gain.connect(opts.bus || this.sfxGain);
+    src.start(start);
+    src.stop(start + dur + 0.02);
+  },
+
+  playUiMove() {
+    this.tone('square', 860, 0.04, 0.055, { slide: 0.96 });
+  },
+  playUiConfirm() {
+    this.tone('square', 660, 0.06, 0.075);
+    this.tone('square', 980, 0.08, 0.07, { delay: 0.045 });
+  },
+  playUiBack() {
+    this.tone('square', 520, 0.06, 0.07, { slide: 0.82 });
+  },
+  playAttackSwing(kind, heavy) {
+    if (kind === 'kick') {
+      this.noise(0.06, heavy ? 0.09 : 0.06, 750);
+      this.tone('triangle', heavy ? 180 : 230, heavy ? 0.08 : 0.06, heavy ? 0.08 : 0.06, { slide: 0.86 });
+      return;
+    }
+    this.noise(0.05, heavy ? 0.08 : 0.055, 980);
+    this.tone('square', heavy ? 240 : 320, heavy ? 0.08 : 0.06, heavy ? 0.075 : 0.055, { slide: 0.92 });
+  },
+  playSpecialCast() {
+    this.tone('sawtooth', 280, 0.08, 0.08, { slide: 1.3 });
+    this.noise(0.08, 0.06, 1200);
+  },
+  playProjectileLaunch() {
+    this.tone('triangle', 220, 0.09, 0.08, { slide: 1.7 });
+    this.tone('square', 420, 0.07, 0.06, { delay: 0.02, slide: 1.35 });
+  },
+  playHit(strong) {
+    this.noise(strong ? 0.09 : 0.06, strong ? 0.14 : 0.11, 520);
+    this.tone('square', strong ? 150 : 190, strong ? 0.09 : 0.07, strong ? 0.11 : 0.09, { slide: 0.68 });
+  },
+  playBlock() {
+    this.tone('square', 460, 0.05, 0.08, { slide: 0.95 });
+    this.noise(0.05, 0.06, 1800);
+  },
+  playSuperStart() {
+    this.tone('square', 420, 0.08, 0.085);
+    this.tone('square', 560, 0.08, 0.085, { delay: 0.07 });
+    this.tone('square', 760, 0.1, 0.095, { delay: 0.14 });
+  },
+
+  setBgmDuck(ducked) {
+    if (!this.ctx || !this.musicGain) return;
+    const t = this.ctx.currentTime;
+    this.musicGain.gain.setTargetAtTime(ducked ? 0.05 : 0.14, t, 0.06);
+  },
+
+  updateBgm() {
+    if (!this.ctx || this.ctx.state !== 'running' || !this.bgmEnabled) return;
+    this.bgmFrame++;
+    if (this.bgmFrame < this.bgmStepFrames) return;
+    this.bgmFrame = 0;
+    const idx = this.bgmStep % this.leadSeq.length;
+    const lead = this.leadSeq[idx];
+    const harmony = this.harmonySeq[idx];
+    const bass = this.bassSeq[idx];
+
+    if (bass > 0) this.tone('triangle', this.midiToHz(bass), 0.16, 0.09, { bus: this.musicGain, slide: 0.995 });
+    if (lead > 0) this.tone('square', this.midiToHz(lead), 0.11, 0.06, { bus: this.musicGain, slide: 1.01 });
+    if (harmony > 0) this.tone('square', this.midiToHz(harmony), 0.1, 0.045, { bus: this.musicGain });
+    if (idx % 2 === 1) this.noise(0.025, 0.03, 2800, { bus: this.musicGain });
+
+    this.bgmStep++;
+  }
+};
+
 /* ===== SECTION 4: INPUT ===== */
 
 const CommandInterpreter = {
@@ -1113,7 +1270,12 @@ class InputManager {
     this.chargeTimers = { 4: 0, 2: 0 };
     this.chargeReady = { 4: false, 2: false };
     this.chargeRelease = { 4: 0, 2: 0 };
-    this._onDown = e => { this.keys[e.code] = true; e.preventDefault(); };
+    this._onDown = e => {
+      this.keys[e.code] = true;
+      // FIX #86: Unlock audio context on first user input.
+      AudioEngine.unlock();
+      e.preventDefault();
+    };
     this._onUp = e => { this.keys[e.code] = false; e.preventDefault(); };
     document.addEventListener('keydown', this._onDown);
     document.addEventListener('keyup', this._onUp);
@@ -1629,6 +1791,10 @@ class Fighter {
     this.attackFrame = 0;
     this.hasHitThisAttack = false;
     this.animFrame = 0;
+    // FIX #88: Add punch/kick swing SFX when attacks start.
+    const heavy = attackName.endsWith('HP') || attackName.endsWith('HK') || attackName.endsWith('MP') || attackName.endsWith('MK');
+    if (attackName.endsWith('P')) AudioEngine.playAttackSwing('punch', heavy);
+    if (attackName.endsWith('K')) AudioEngine.playAttackSwing('kick', heavy);
   }
 
   startSpecial(specialName, version) {
@@ -1643,6 +1809,8 @@ class Fighter {
     this.specialHitTimer = 0;
     this.animFrame = 0;
     this.projectilePoseFrames = 0;
+    // FIX #88: Add special-cast SFX.
+    AudioEngine.playSpecialCast(this.charId, specialName);
   }
 
   getAttackData() {
@@ -1910,6 +2078,7 @@ class Fighter {
             const px = this.x + (this.facingRight ? 8 : -8);
             const py = this.y - 12; // FIX #27
             proj.fire(px, py, atk.projSpeed, atk.damage, this.pi, this.facingRight, this.charId); // FIX #14
+            AudioEngine.playProjectileLaunch(this.charId); // FIX #88
           }
           this.projectilePoseFrames = 7; // FIX #46
           this.attackPhase = 'recovery';
@@ -2915,9 +3084,16 @@ sceneManager.add('title', {
   exit() {},
   update() {
     this.timer++;
-    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.cursor = (this.cursor - 1 + 2) % 2;
-    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.cursor = (this.cursor + 1) % 2;
+    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) {
+      this.cursor = (this.cursor - 1 + 2) % 2;
+      AudioEngine.playUiMove(); // FIX #90
+    }
+    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) {
+      this.cursor = (this.cursor + 1) % 2;
+      AudioEngine.playUiMove(); // FIX #90
+    }
     if (inputManager.wasPressed(KEYS.CONFIRM)) {
+      AudioEngine.playUiConfirm(); // FIX #90
       if (this.cursor === 0) sceneManager.go('charSelect');
       else sceneManager.go('records');
     }
@@ -2961,15 +3137,31 @@ sceneManager.add('charSelect', {
   update() {
     const n = this.charIds.length;
     this.timer++;
-    if (inputManager.wasPressed(KEYS.LEFT) || inputManager.wasPressed('KeyA')) this.cursor = (this.cursor - 1 + n) % n;
-    if (inputManager.wasPressed(KEYS.RIGHT) || inputManager.wasPressed('KeyD')) this.cursor = (this.cursor + 1) % n;
-    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.cursor = (this.cursor - 1 + n) % n;
-    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.cursor = (this.cursor + 1) % n;
+    if (inputManager.wasPressed(KEYS.LEFT) || inputManager.wasPressed('KeyA')) {
+      this.cursor = (this.cursor - 1 + n) % n;
+      AudioEngine.playUiMove(); // FIX #90
+    }
+    if (inputManager.wasPressed(KEYS.RIGHT) || inputManager.wasPressed('KeyD')) {
+      this.cursor = (this.cursor + 1) % n;
+      AudioEngine.playUiMove(); // FIX #90
+    }
+    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) {
+      this.cursor = (this.cursor - 1 + n) % n;
+      AudioEngine.playUiMove(); // FIX #90
+    }
+    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) {
+      this.cursor = (this.cursor + 1) % n;
+      AudioEngine.playUiMove(); // FIX #90
+    }
     if (inputManager.wasPressed(KEYS.CONFIRM)) {
       arcadeState.playerChar = this.charIds[this.cursor];
+      AudioEngine.playUiConfirm(); // FIX #90
       sceneManager.go('diffSelect');
     }
-    if (inputManager.wasPressed(KEYS.PAUSE)) sceneManager.go('title');
+    if (inputManager.wasPressed(KEYS.PAUSE)) {
+      AudioEngine.playUiBack(); // FIX #90
+      sceneManager.go('title');
+    }
     inputManager.update(true);
   },
   render(ctx) {
@@ -3031,13 +3223,23 @@ sceneManager.add('diffSelect', {
   exit() {},
   update() {
     this.timer++;
-    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.cursor = (this.cursor - 1 + 3) % 3;
-    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.cursor = (this.cursor + 1) % 3;
+    if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) {
+      this.cursor = (this.cursor - 1 + 3) % 3;
+      AudioEngine.playUiMove(); // FIX #90
+    }
+    if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) {
+      this.cursor = (this.cursor + 1) % 3;
+      AudioEngine.playUiMove(); // FIX #90
+    }
     if (inputManager.wasPressed(KEYS.CONFIRM)) {
       arcadeState.difficulty = this.diffs[this.cursor];
+      AudioEngine.playUiConfirm(); // FIX #90
       startArcade();
     }
-    if (inputManager.wasPressed(KEYS.PAUSE)) sceneManager.go('charSelect');
+    if (inputManager.wasPressed(KEYS.PAUSE)) {
+      AudioEngine.playUiBack(); // FIX #90
+      sceneManager.go('charSelect');
+    }
     inputManager.update(true);
   },
   render(ctx) {
@@ -3082,6 +3284,7 @@ sceneManager.add('vsScreen', {
   update() {
     this.timer--;
     if (this.timer <= 0 || inputManager.wasPressed(KEYS.CONFIRM)) {
+      if (inputManager.wasPressed(KEYS.CONFIRM)) AudioEngine.playUiConfirm(); // FIX #90
       sceneManager.go('battle');
     }
     inputManager.update(true);
@@ -3184,6 +3387,7 @@ const battleScene = {
       active:false, timer:0, attacker:null, defender:null, damage:0, video:null,
       introFrames:0, introImage:null, videoStarted:false
     };
+    AudioEngine.setBgmDuck(false); // FIX #89
 
     particles.clear();
     projectiles[0].active = false;
@@ -3209,9 +3413,11 @@ const battleScene = {
       projectiles[0].active = false;
       projectiles[1].active = false;
       if (this.superCutin) this.superCutin.active = false; // FIX #55
+      AudioEngine.setBgmDuck(false); // FIX #89
     });
     eventBus.on('matchEnd', (data) => {
       if (this.superCutin) this.superCutin.active = false; // FIX #55
+      AudioEngine.setBgmDuck(false); // FIX #89
       arcadeState.score = this.scoreMgr.score;
       if (data.winner === 0) {
         this.scoreMgr.addMatchWin();
@@ -3235,6 +3441,7 @@ const battleScene = {
     if (this.superCutin && this.superCutin.video) {
       try { this.superCutin.video.pause(); this.superCutin.video.currentTime = 0; } catch (_e) {}
     }
+    AudioEngine.setBgmDuck(false); // FIX #89
     eventBus.clear();
   },
 
@@ -3249,18 +3456,29 @@ const battleScene = {
 
   update() {
     if (this.paused) {
-      if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) this.pauseCursor = (this.pauseCursor - 1 + 2) % 2;
-      if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) this.pauseCursor = (this.pauseCursor + 1) % 2;
+      if (inputManager.wasPressed(KEYS.UP) || inputManager.wasPressed('KeyW')) {
+        this.pauseCursor = (this.pauseCursor - 1 + 2) % 2;
+        AudioEngine.playUiMove(); // FIX #90
+      }
+      if (inputManager.wasPressed(KEYS.DOWN) || inputManager.wasPressed('KeyS')) {
+        this.pauseCursor = (this.pauseCursor + 1) % 2;
+        AudioEngine.playUiMove(); // FIX #90
+      }
       if (inputManager.wasPressed(KEYS.CONFIRM)) {
+        AudioEngine.playUiConfirm(); // FIX #90
         if (this.pauseCursor === 0) this.paused = false;
         else sceneManager.go('title');
       }
-      if (inputManager.wasPressed(KEYS.PAUSE)) this.paused = false;
+      if (inputManager.wasPressed(KEYS.PAUSE)) {
+        AudioEngine.playUiBack(); // FIX #90
+        this.paused = false;
+      }
       inputManager.update(true);
       return;
     }
 
     if (inputManager.wasPressed(KEYS.PAUSE) && this.roundMgr.phase === 'fight') {
+      AudioEngine.playUiBack(); // FIX #90
       this.paused = true;
       this.pauseCursor = 0;
       inputManager.update(true);
@@ -3377,12 +3595,17 @@ const battleScene = {
     if (!this.superCutin || this.superCutin.active) return false;
 
     attacker.consumeSuper();
+    AudioEngine.unlock(); // FIX #87
+    AudioEngine.playSuperStart(); // FIX #88
+    AudioEngine.setBgmDuck(true); // FIX #89
     const video = SuperVideoStore.get(attacker.charId, defender.charId);
     const introImage = SAImageStore.get(attacker.charId);
     let cutinFrames = CFG.SUPER_CUTIN_FRAMES;
     if (video) {
       try {
         video.pause();
+        video.muted = false;
+        video.volume = 0.45; // FIX #91
         video.currentTime = 0;
         video.playbackRate = 1;
         video.loop = false;
@@ -3417,6 +3640,9 @@ const battleScene = {
     if (this.superCutin.video && !this.superCutin.videoStarted) {
       this.superCutin.videoStarted = true;
       try {
+        AudioEngine.unlock(); // FIX #87
+        this.superCutin.video.muted = false;
+        this.superCutin.video.volume = 0.45; // FIX #91
         this.superCutin.video.currentTime = 0;
         const p = this.superCutin.video.play();
         if (p && p.catch) p.catch(() => {});
@@ -3439,6 +3665,7 @@ const battleScene = {
     if (atk && def && def.hp > 0) {
       const dealt = def.takeDamage(this.superCutin.damage, 20, 0, 10, false, 'mid', true, 0);
       this.awardSuper(atk, def, dealt, false);
+      AudioEngine.playHit(true); // FIX #88
       this.comboCounter.addHit(dealt, atk.pi);
       this.scoreMgr.addHit(dealt);
       const cam = this.camera.getOffset();
@@ -3451,6 +3678,7 @@ const battleScene = {
       }
     }
     this.superCutin.active = false;
+    AudioEngine.setBgmDuck(false); // FIX #89
     return true;
   },
 
@@ -3704,6 +3932,7 @@ const battleScene = {
         defender.stateTimer = 20;
         const dmg = defender.takeDamage(120, 0, 0, 3, false, 'mid', false, 0);
         this.awardSuper(attacker, defender, dmg, false); // FIX #55
+        AudioEngine.playHit(true); // FIX #88
         this.scoreMgr.addHit(dmg);
         return;
       }
@@ -3737,6 +3966,7 @@ const battleScene = {
     attacker.markHitConfirm(isBlocked);
 
     if (!isBlocked) {
+      AudioEngine.playHit(isSpecial || damage >= 70); // FIX #88
       this.comboCounter.addHit(actualDmg, attackerIdx);
       this.scoreMgr.addHit(actualDmg);
 
@@ -3754,6 +3984,7 @@ const battleScene = {
         this.flashAlpha = 0.3;
       }
     } else {
+      AudioEngine.playBlock(); // FIX #88
       const hitX = (attacker.x + defender.x) / 2;
       const hitY = Math.min(attacker.y, defender.y) - 10;
       particles.spawnBlockSpark(hitX + this.camera.getOffset().x, hitY + this.camera.getOffset().y);
@@ -3812,9 +4043,11 @@ const battleScene = {
           const ownerF = p.owner === 0 ? this.p1 : this.p2;
           this.awardSuper(ownerF, target, dealt, isBlocked); // FIX #55
           if (!isBlocked) {
+            AudioEngine.playHit(true); // FIX #88
             particles.spawnHitSpark(p.x + this.camera.getOffset().x, p.y + this.camera.getOffset().y);
             this.frozenFrames = 5;
           } else {
+            AudioEngine.playBlock(); // FIX #88
             particles.spawnBlockSpark(p.x + this.camera.getOffset().x, p.y + this.camera.getOffset().y);
           }
         }
@@ -4088,7 +4321,10 @@ sceneManager.add('ending', {
   exit() {},
   update() {
     this.timer++;
-    if (this.timer > 60 && inputManager.wasPressed(KEYS.CONFIRM)) sceneManager.go('title');
+    if (this.timer > 60 && inputManager.wasPressed(KEYS.CONFIRM)) {
+      AudioEngine.playUiConfirm(); // FIX #90
+      sceneManager.go('title');
+    }
     inputManager.update(true);
   },
   render(ctx) {
@@ -4128,7 +4364,10 @@ sceneManager.add('gameOver', {
   exit() {},
   update() {
     this.timer++;
-    if (this.timer > 60 && inputManager.wasPressed(KEYS.CONFIRM)) sceneManager.go('title');
+    if (this.timer > 60 && inputManager.wasPressed(KEYS.CONFIRM)) {
+      AudioEngine.playUiConfirm(); // FIX #90
+      sceneManager.go('title');
+    }
     inputManager.update(true);
   },
   render(ctx) {
@@ -4158,7 +4397,13 @@ sceneManager.add('records', {
   exit() {},
   update() {
     this.timer++;
-    if (inputManager.wasPressed(KEYS.CONFIRM) || inputManager.wasPressed(KEYS.PAUSE)) sceneManager.go('title');
+    if (inputManager.wasPressed(KEYS.CONFIRM)) {
+      AudioEngine.playUiConfirm(); // FIX #90
+      sceneManager.go('title');
+    } else if (inputManager.wasPressed(KEYS.PAUSE)) {
+      AudioEngine.playUiBack(); // FIX #90
+      sceneManager.go('title');
+    }
     inputManager.update(true);
   },
   render(ctx) {
@@ -4291,6 +4536,8 @@ const SaveManager = {
       sceneManager.update();
       accumulator = 0;
     }
+
+    AudioEngine.updateBgm(); // FIX #85
 
     ctx.clearRect(0, 0, CFG.INTERNAL_W, CFG.INTERNAL_H);
     sceneManager.render(ctx);

@@ -369,6 +369,7 @@
                         </div>
                     </div>
                     <div class="controls">
+                        <button class="btn-sm" style="background:#444" onclick="refreshGame('${game.id}')" title="ファイルを新しくした時に押すと、キャッシュを消して最新状態を表示させます">🔄 最新に更新</button>
                         <button class="btn-sm" style="background:${game.is_public ? '#333' : '#14b8a6'}" onclick="togglePublic('${game.id}')">
                             ${game.is_public ? '非公開にする' : '公開する'}
                         </button>
@@ -469,6 +470,20 @@
                 loadData();
             } catch (err) {
                 alert('作成失敗: ' + err.message);
+            }
+        }
+
+        async function refreshGame(id) {
+            const newVersion = Date.now();
+            try {
+                let client = (supabase && supabase.from) ? supabase : getDbClient();
+                const { error } = await client.from('games').update({ version: newVersion }).eq('id', id);
+                if (error) throw error;
+                
+                allGames[id].version = newVersion;
+                alert('最新ファイルへの更新命令（キャッシュ更新）を送信しました！サイトを確認してください。');
+            } catch (err) {
+                alert('更新失敗: ' + err.message);
             }
         }
     </script>

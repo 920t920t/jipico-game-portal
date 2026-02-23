@@ -65,7 +65,12 @@ function renderPlayPage(gameData) {
     }
 
     window.addEventListener('resize', resizeIframe);
-    iframe.src = gameData.src;
+
+    // キャッシュ回避（キャッシュバスター）用パラメータを付与
+    const version = gameData.version || Date.now();
+    const separator = gameData.src.includes('?') ? '&' : '?';
+    iframe.src = `${gameData.src}${separator}v=${version}`;
+
     iframe.onload = resizeIframe;
 
     document.getElementById('game-description').innerText = gameData.description;
