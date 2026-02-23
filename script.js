@@ -40,7 +40,9 @@ async function initCmsGallery() {
             return acc;
         }, {});
 
-        const order = settingsRes.data ? settingsRes.data.value : Object.keys(allGames);
+        // 非表示設定のゲームを除去
+        const order = (settingsRes.data ? settingsRes.data.value : Object.keys(allGames))
+            .filter(id => allGames[id] && allGames[id].is_public !== false);
 
         renderGameGallery(allGames, order);
         initInteractions();
