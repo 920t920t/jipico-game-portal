@@ -148,6 +148,15 @@
             <div id="games-edit-list"></div>
         </section>
 
+        <section style="margin-top: 4rem;">
+            <h3>コメント管理</h3>
+            <p style="font-size:0.8rem; color:#888;">全ゲームの最新コメントを表示します。不適切なコメントは削除できます。</p>
+            <div id="comments-admin-list"
+                style="background:var(--card); border-radius:12px; padding:1.5rem; max-height:600px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05);">
+                <p style="text-align:center; color:#888;">読み込み中...</p>
+            </div>
+        </section>
+
         <div style="margin-top: 4rem; opacity: 0.5;">
             <a href="index.html" style="color: #fff;">← サイトに戻る</a>
         </div>
@@ -286,6 +295,7 @@
                 } else {
                     renderOrderList();
                     renderEditList();
+                    renderCommentsList();
                 }
 
             } catch (err) {
@@ -479,11 +489,75 @@
                 let client = (supabase && supabase.from) ? supabase : getDbClient();
                 const { error } = await client.from('games').update({ version: newVersion }).eq('id', id);
                 if (error) throw error;
-                
+
                 allGames[id].version = newVersion;
                 alert('最新ファイルへの更新命令（キャッシュ更新）を送信しました！サイトを確認してください。');
             } catch (err) {
                 alert('更新失敗: ' + err.message);
+            }
+        }
+
+        async function renderCommentsList() {
+            const list = document.getElementById('comments-admin-list');
+            let client = (supabase && supabase.from) ? supabase : getDbClient();
+
+            if (!client) return;
+
+            try {
+                const { data: comments, error } = await client
+                    .from('comments')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                if (!comments || comments.length === 0) {
+                    list.innerHTML = '<p style="text-align:center; padding:1rem; color:#888;">コメントはありません。</p>';
+                    return;
+                }
+
+                list.innerHTML = '';
+                comments.forEach(c => {
+                    const game = allGames[c.game_id] || { title: c.game_id };
+                    const dateStr = new Date(c.created_at).toLocaleString('ja-JP');
+                    const item = document.createElement('div');
+                    item.className = 'game-list-item';
+                    item.style.flexDirection = 'column';
+                    item.style.alignItems = 'flex-start';
+                    item.style.gap = '0.5rem';
+                    item.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; width:100%; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:0.3rem;">
+                            <span style="font-size:0.8rem; color:var(--p)">${game.title}</span>
+                            <span style="font-size:0.7rem; color:#666;">${dateStr}</span>
+                        </div>
+                        <div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div style="flex:1;">
+                                <strong style="font-size:0.9rem;">${c.nickname || '名無しさん'}:</strong>
+                                <p style="font-size:0.85rem; color:#ccc; margin:0.3rem 0; white-space:pre-wrap;">${c.content}</p>
+                            </div>
+                            <button class="btn-sm" style="background:#f87171; margin-left:1rem;" onclick="deleteCommentAdmin('${c.id}')">削除</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (err) {
+                console.error('Fetch comments error:', err);
+                list.innerHTML = '<p style="color:red; padding:1rem;">コメントの読み込みに失敗しました。</p>';
+            }
+        }
+
+        async function deleteCommentAdmin(id) {
+            if (!confirm('管理権限でこのコメントを削除しますか？')) return;
+
+            try {
+                let client = (supabase && supabase.from) ? supabase : getDbClient();
+                const { error } = await client.from('comments').delete().eq('id', id);
+                if (error) throw error;
+
+                alert('削除しました');
+                renderCommentsList();
+            } catch (err) {
+                alert('削除失敗: ' + err.message);
             }
         }
     </script>

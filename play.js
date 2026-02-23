@@ -138,6 +138,9 @@ async function initComments(gameId) {
 
             if (error) throw error;
 
+            // ローカルストレージから自分の投稿したコメントのIDとトークンを取得
+            const myTokens = JSON.parse(localStorage.getItem('comment_delete_tokens') || '{}');
+
             commentsList.innerHTML = '';
             if (!comments || comments.length === 0) {
                 commentsList.innerHTML = '<p style="color:#888; text-align:center; padding: 2rem 0;">まだコメントはありません。一番乗りで感想を書こう！</p>';
@@ -148,23 +151,63 @@ async function initComments(gameId) {
                 const el = document.createElement('div');
                 el.className = 'comment-item';
 
+                const isMyComment = myTokens[c.id] !== undefined;
+
                 const dateStr = new Date(c.created_at).toLocaleString('ja-JP');
-                // XSS対策の簡易的なエスケープ
                 const sanitizedText = (c.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
                 const sanitizedName = (c.nickname || "名無しさん").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
                 el.innerHTML = `
                     <div class="comment-header">
                         <span class="comment-name">${sanitizedName}</span>
-                        <span class="comment-date">${dateStr}</span>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="comment-date">${dateStr}</span>
+                            ${isMyComment ? `<button class="delete-comment-btn" data-id="${c.id}" style="background:none; border:none; color:var(--accent-pink); cursor:pointer; font-size:0.7rem; padding:0;">削除</button>` : ''}
+                        </div>
                     </div>
                     <div class="comment-body">${sanitizedText}</div>
                 `;
+
+                // 削除ボタンのイベントリスナー
+                if (isMyComment) {
+                    const deleteBtn = el.querySelector('.delete-comment-btn');
+                    deleteBtn.addEventListener('click', () => deleteComment(c.id, myTokens[c.id]));
+                }
+
                 commentsList.appendChild(el);
             });
         } catch (err) {
             console.error('Error loading comments:', err);
             commentsList.innerHTML = '<p style="color:var(--accent-pink); text-align:center;">コメントの読み込みに失敗しました。</p>';
+        }
+    };
+
+    const deleteComment = async (commentId, token) => {
+        if (!confirm('このコメントを削除しますか？')) return;
+
+        try {
+            // RLSポリシーで x-delete-token ヘッダーをチェックするように設定するため
+            // supabase-jsの標準的な手法では headers を動的に変えるのが難しいため、
+            // ここでは delete_token を条件に含めるシンプルな削除を実行します
+            // (前述のSQLで定義した複雑なポリシーではなく、カラム一致の簡易ポリシーに変更推奨)
+            const { error } = await client
+                .from('comments')
+                .delete()
+                .eq('id', commentId)
+                .eq('delete_token', token);
+
+            if (error) throw error;
+
+            // ローカルストレージからトークンを削除
+            const myTokens = JSON.parse(localStorage.getItem('comment_delete_tokens') || '{}');
+            delete myTokens[commentId];
+            localStorage.setItem('comment_delete_tokens', JSON.stringify(myTokens));
+
+            alert('コメントを削除しました。');
+            await loadComments();
+        } catch (err) {
+            console.error('Error deleting comment:', err);
+            alert('削除に失敗しました: ' + err.message);
         }
     };
 
@@ -177,22 +220,34 @@ async function initComments(gameId) {
 
         const name = nameInput.value.trim() || '名無しさん';
 
+        // 削除用トークンの生成
+        const deleteToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+
         submitBtn.disabled = true;
         submitBtn.textContent = '送信中...';
 
         try {
-            const { error } = await client
+            const { data, error } = await client
                 .from('comments')
                 .insert([
                     {
                         game_id: gameId,
                         user_id: currentUser ? currentUser.id : null,
                         nickname: name,
-                        content: text
+                        content: text,
+                        delete_token: deleteToken
                     }
-                ]);
+                ])
+                .select();
 
             if (error) throw error;
+
+            // 投稿したコメントのIDとトークンを保存
+            if (data && data[0]) {
+                const myTokens = JSON.parse(localStorage.getItem('comment_delete_tokens') || '{}');
+                myTokens[data[0].id] = deleteToken;
+                localStorage.setItem('comment_delete_tokens', JSON.stringify(myTokens));
+            }
 
             // 入力欄をクリア
             textInput.value = '';
