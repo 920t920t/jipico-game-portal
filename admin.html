@@ -535,9 +535,16 @@
                                 <strong style="font-size:0.9rem;">${c.nickname || '名無しさん'}:</strong>
                                 <p style="font-size:0.85rem; color:#ccc; margin:0.3rem 0; white-space:pre-wrap;">${c.content}</p>
                             </div>
-                            <button class="btn-sm" style="background:#f87171; margin-left:1rem;" onclick="deleteCommentAdmin('${c.id}')">削除</button>
+                            <button class="btn-sm delete-admin-btn" style="background:#f87171; margin-left:1rem;">削除</button>
                         </div>
                     `;
+
+                    const btn = item.querySelector('.delete-admin-btn');
+                    btn.addEventListener('click', () => {
+                        console.log('Delete button clicked for ID:', c.id);
+                        deleteCommentAdmin(c.id);
+                    });
+
                     list.appendChild(item);
                 });
             } catch (err) {
