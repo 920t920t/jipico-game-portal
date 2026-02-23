@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+じぴこ
+のOCTYPE html>
 <html lang="ja">
 
 <head>
@@ -12,6 +13,7 @@
         href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Outfit:wght@400;700;900&family=Zen+Maru+Gothic:wght@400;700;900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="games_db.js"></script>
 </head>
 
 <body>
@@ -47,53 +49,9 @@
                 <span class="jp-sub">最新のインディーズ作品</span>
             </div>
 
-            <div class="game-magazine-grid">
-                <!-- Featured Game: Cave Explorer -->
-                <div class="magazine-feature">
-                    <a href="play.html?id=spelunker" class="feature-link">
-                        <div class="feature-img"
-                            style="background-image: url('16_spelunker/title.jpg'); background-size: cover; background-position: center;">
-                            <div class="img-overlay"></div>
-                        </div>
-                        <div class="feature-info">
-                            <span class="tag">FEATURED</span>
-                            <h3>Cave Explorer</h3>
-                            <p>究極の洞窟探検アクション。光と闇が交錯する地下世界で、伝説の財宝を追い求めろ。</p>
-                            <span class="action-text">PLAY NOW →</span>
-                        </div>
-                    </a>
-                </div>
-
-                <!-- Side Games -->
-                <div class="magazine-side">
-                    <div class="side-item">
-                        <a href="play.html?id=lsg" class="side-link">
-                            <div class="side-img"
-                                style="background-image: url('13_LSG/title.jpg'); background-size: cover; background-position: center;">
-                            </div>
-                            <div class="side-info">
-                                <h3>告白デスマーチ <br>修学旅行編</h3>
-                                <span class="action-text">PLAY →</span>
-                            </div>
-                        </a>
-                    </div>
-
-                    <div class="side-item">
-                        <a href="play.html?id=risingfist" class="side-link">
-                            <div class="side-img"
-                                style="background-image: url('14_risingfist/title.jpg'); background-size: cover; background-position: center;">
-                            </div>
-                            <div class="side-info">
-                                <h3>ライジングフィスト</h3>
-                                <span class="action-text">PLAY →</span>
-                            </div>
-                        </a>
-                    </div>
-
-                    <div class="side-more">
-                        <p>More Coming Soon...</p>
-                    </div>
-                </div>
+            <div id="magazine-grid" class="game-magazine-grid">
+                <!-- JavaScriptにより動的に生成されます -->
+                <div class="loading-placeholder">Loading Games...</div>
             </div>
         </section>
 
