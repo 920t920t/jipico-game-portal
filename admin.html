@@ -264,12 +264,19 @@
             const msg = document.getElementById('status-msg');
             msg.textContent = '保存中...';
             msg.className = 'status success';
+            msg.style.display = 'block';
 
-            const { error } = await supabase
+            let client = (typeof supabase !== 'undefined' && supabase && supabase.from) ? supabase : null;
+            if (!client && typeof getDbClient === 'function') {
+                client = getDbClient();
+            }
+
+            const { error } = await client
                 .from('settings')
                 .upsert({ key: 'gallery_order', value: currentOrder });
 
             if (error) {
+                console.error('Save error:', error);
                 alert('エラー発生: ' + error.message);
                 msg.style.display = 'none';
             } else {
