@@ -57,9 +57,11 @@ function renderGameGallery(gamesMap, order) {
     const gridContainer = document.getElementById('magazine-grid');
     gridContainer.innerHTML = '';
 
-    const allIds = Object.keys(gamesMap);
-    // 順序リスト（order）にあるものを優先し、残りを後ろに繋げる
-    const finalOrder = [...new Set([...order.filter(id => allIds.includes(id)), ...allIds])];
+    // 公開中のIDのみを取得
+    const publicIds = Object.keys(gamesMap).filter(id => gamesMap[id].is_public !== false);
+
+    // 順序リストにあるものを優先（かつ公開中のもの限定）
+    const finalOrder = [...new Set([...order.filter(id => publicIds.includes(id)), ...publicIds])];
 
     if (finalOrder.length === 0) {
         gridContainer.innerHTML = '<p>表示可能なゲームがありません。</p>';
