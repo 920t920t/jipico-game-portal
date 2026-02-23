@@ -72,10 +72,20 @@ function renderPlayPage(gameData) {
     document.getElementById('game-controls').innerText = gameData.controls;
     document.getElementById('game-bugs').innerText = gameData.bugs;
 
-    // screenshots (DB上は現在無いためフォールバック。JSONB等で拡張可能)
+    // screenshots
     const gallery = document.getElementById('screenshot-gallery');
-    if (gameData.screenshots) {
-        // ... (JSONBから読み込むロジック等)
+    gallery.innerHTML = '';
+
+    if (gameData.screenshots && Array.isArray(gameData.screenshots)) {
+        gameData.screenshots.forEach(src => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = 'screenshot-img';
+            img.alt = 'Screenshot';
+            // クリックで拡大（簡易実装）
+            img.onclick = () => window.open(src, '_blank');
+            gallery.appendChild(img);
+        });
     }
 }
 
