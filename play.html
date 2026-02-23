@@ -11,15 +11,49 @@
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase_config.js"></script>
-    <script src="play.js"></script>
 </head>
 
 <body>
     <div class="background-animation"></div>
-    <header>
-        <a href="index.html" class="back-link">← ホームに戻る</a>
-        <div class="logo">じぴこの<span class="highlight">ゲームポータル</span></div>
+    <header style="display:flex; justify-content:space-between; align-items:center; padding: 1.5rem 5%;">
+        <div style="display:flex; align-items:center; gap:1.5rem;">
+            <a href="index.html" class="back-link">← ホームに戻る</a>
+            <div class="logo" style="margin:0;">じぴこの<span class="highlight">ゲームポータル</span></div>
+        </div>
+        <nav>
+            <button id="auth-btn" class="login-btn">ログイン</button>
+            <div id="user-profile" style="display:none; align-items:center; gap:10px;">
+                <span id="user-display-name" style="font-size:0.9rem; color:var(--secondary);"></span>
+                <button id="logout-btn" class="login-btn" style="padding:0.4rem 1rem; font-size:0.8rem;">ログアウト</button>
+            </div>
+        </nav>
     </header>
+
+    <!-- Auth Modal (Re-used) -->
+    <div id="auth-modal" class="modal-overlay" style="display:none;">
+        <div class="auth-card">
+            <button class="modal-close" id="close-auth">&times;</button>
+            <div id="auth-form-container">
+                <h2 id="auth-modal-title">ログイン</h2>
+                <p id="auth-modal-desc">アカウントにログインしてデータを同期しよう</p>
+                <div class="auth-inputs">
+                    <div class="input-group">
+                        <label for="auth-email">メールアドレス</label>
+                        <input type="email" id="auth-email" placeholder="example@mail.com">
+                    </div>
+                    <div class="input-group">
+                        <label for="auth-password">パスワード</label>
+                        <input type="password" id="auth-password" placeholder="••••••••">
+                    </div>
+                </div>
+                <div id="auth-error-msg"
+                    style="color:var(--accent-pink); font-size:0.8rem; margin-bottom:1rem; display:none;"></div>
+                <button id="auth-submit-btn" class="btn-main"
+                    style="width:100%; padding:1rem; margin-bottom:1.5rem;">ログイン</button>
+                <p class="auth-switch">まだアカウントをお持ちでないですか？ <a href="#" id="switch-to-signup">新規登録</a></p>
+            </div>
+        </div>
+    </div>
 
     <main class="play-container">
         <h1 id="game-title">Loading...</h1>
@@ -45,9 +79,9 @@
             </div>
 
             <div class="comment-section">
-                <h2>💬 みんなのコメント (匿名機能テスト)</h2>
+                <h2>💬 みんなのコメント</h2>
                 <p style="font-size:0.8rem; color:#888; margin-bottom:1rem;">
-                    ※現在はデモンストレーション用のため、ブラウザ内にのみ保存されます。将来的にはログイン機能と共に全体共有される予定です。</p>
+                    ゲームの感想やアドバイスを共有しよう！ログインなしでも匿名で投稿できます。</p>
                 <div class="comment-form">
                     <input type="text" id="comment-name" placeholder="名無しさん (任意)" maxlength="20">
                     <textarea id="comment-text" placeholder="ゲームの感想やアドバイスを書こう！" rows="3" required></textarea>

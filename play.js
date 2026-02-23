@@ -94,46 +94,66 @@ function renderPlayPage(gameData) {
     }
 }
 
-function initComments(gameId) {
-    // 開発段階のため、まずはlocalStorageを使ってブラウザ保存で実装
-    const storageKey = `comments_${gameId}`;
+async function initComments(gameId) {
     const commentsList = document.getElementById('comments-list');
     const submitBtn = document.getElementById('submit-comment');
     const nameInput = document.getElementById('comment-name');
     const textInput = document.getElementById('comment-text');
 
-    const loadComments = () => {
-        const saved = localStorage.getItem(storageKey);
-        const comments = saved ? JSON.parse(saved) : [];
+    // 現在のユーザー情報を取得（ログインしている場合のみ）
+    let currentUser = null;
+    const client = typeof getDbClient === 'function' ? getDbClient() : supabase;
+    if (client) {
+        const { data: { user } } = await client.auth.getUser();
+        currentUser = user;
 
-        commentsList.innerHTML = '';
-        if (comments.length === 0) {
-            commentsList.innerHTML = '<p style="color:#888; text-align:center; padding: 2rem 0;">まだコメントはありません。一番乗りで感想を書こう！</p>';
-            return;
+        // ログインしている場合は名前入力欄をメールアドレスの一部で埋める（任意）
+        if (currentUser && !nameInput.value) {
+            nameInput.value = currentUser.email.split('@')[0];
         }
+    }
 
-        // 新しいコメントが上に来るように表示
-        comments.slice().reverse().forEach(c => {
-            const el = document.createElement('div');
-            el.className = 'comment-item';
+    const loadComments = async () => {
+        try {
+            const { data: comments, error } = await client
+                .from('comments')
+                .select('*')
+                .eq('game_id', gameId)
+                .order('created_at', { ascending: false });
 
-            const dateStr = new Date(c.date).toLocaleString('ja-JP');
-            // XSS対策の簡易的なエスケープ
-            const sanitizedText = c.text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            const sanitizedName = c.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            if (error) throw error;
 
-            el.innerHTML = `
-                <div class="comment-header">
-                    <span class="comment-name">${sanitizedName}</span>
-                    <span class="comment-date">${dateStr}</span>
-                </div>
-                <div class="comment-body">${sanitizedText}</div>
-            `;
-            commentsList.appendChild(el);
-        });
+            commentsList.innerHTML = '';
+            if (!comments || comments.length === 0) {
+                commentsList.innerHTML = '<p style="color:#888; text-align:center; padding: 2rem 0;">まだコメントはありません。一番乗りで感想を書こう！</p>';
+                return;
+            }
+
+            comments.forEach(c => {
+                const el = document.createElement('div');
+                el.className = 'comment-item';
+
+                const dateStr = new Date(c.created_at).toLocaleString('ja-JP');
+                // XSS対策の簡易的なエスケープ
+                const sanitizedText = (c.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                const sanitizedName = (c.nickname || "名無しさん").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+                el.innerHTML = `
+                    <div class="comment-header">
+                        <span class="comment-name">${sanitizedName}</span>
+                        <span class="comment-date">${dateStr}</span>
+                    </div>
+                    <div class="comment-body">${sanitizedText}</div>
+                `;
+                commentsList.appendChild(el);
+            });
+        } catch (err) {
+            console.error('Error loading comments:', err);
+            commentsList.innerHTML = '<p style="color:var(--accent-pink); text-align:center;">コメントの読み込みに失敗しました。</p>';
+        }
     };
 
-    const saveComment = () => {
+    const saveComment = async () => {
         const text = textInput.value.trim();
         if (!text) {
             alert('コメントを入力してください。');
@@ -142,21 +162,34 @@ function initComments(gameId) {
 
         const name = nameInput.value.trim() || '名無しさん';
 
-        const saved = localStorage.getItem(storageKey);
-        const comments = saved ? JSON.parse(saved) : [];
+        submitBtn.disabled = true;
+        submitBtn.textContent = '送信中...';
 
-        comments.push({
-            name: name,
-            text: text,
-            date: new Date().toISOString()
-        });
+        try {
+            const { error } = await client
+                .from('comments')
+                .insert([
+                    {
+                        game_id: gameId,
+                        user_id: currentUser ? currentUser.id : null,
+                        nickname: name,
+                        content: text
+                    }
+                ]);
 
-        localStorage.setItem(storageKey, JSON.stringify(comments));
+            if (error) throw error;
 
-        // 入力欄をクリア
-        textInput.value = '';
+            // 入力欄をクリア
+            textInput.value = '';
+            await loadComments();
 
-        loadComments();
+        } catch (err) {
+            console.error('Error saving comment:', err);
+            alert('コメントの送信に失敗しました: ' + err.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'コメントを送信';
+        }
     };
 
     submitBtn.addEventListener('click', saveComment);
