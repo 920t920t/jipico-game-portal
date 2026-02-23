@@ -553,27 +553,46 @@
             }
         }
 
+        function showDebugLog(msg) {
+            const logArea = document.getElementById('admin-debug-log');
+            logArea.style.display = 'block';
+            logArea.textContent = 'Debug: ' + msg;
+            console.log('AdminDebug:', msg);
+        }
+
         async function deleteCommentAdmin(id) {
-            if (!confirm('管理権限でこのコメントを削除しますか？')) return;
+            showDebugLog('削除ボタンが押されました。ID: ' + id);
+            if (!confirm('管理権限でこのコメントを削除しますか？')) {
+                showDebugLog('削除がキャンセルされました。');
+                return;
+            }
 
             try {
-                // 確実にクライアントを取得
+                showDebugLog('Supabaseクライアントを取得中...');
                 let client = (typeof supabase !== 'undefined' && supabase && supabase.from) ? supabase : null;
                 if (!client && typeof getDbClient === 'function') {
                     client = getDbClient();
                 }
 
                 if (!client || !client.from) {
+                    showDebugLog('クライアントの初期化に失敗しました。');
                     throw new Error('Supabaseクライアントが初期化できていません。ページをリロードしてください。');
                 }
 
+                showDebugLog('削除リクエストを送信中... ID: ' + id);
                 const { error } = await client.from('comments').delete().eq('id', id);
-                if (error) throw error;
 
+                if (error) {
+                    showDebugLog('削除失敗エラー: ' + JSON.stringify(error));
+                    throw error;
+                }
+
+                showDebugLog('削除成功。');
                 alert('削除しました');
                 renderCommentsList();
             } catch (err) {
                 console.error('Delete error:', err);
+                showDebugLog('例外発生: ' + err.message);
                 alert('削除失敗: ' + (err.message || '不明なエラーが発生しました'));
             }
         }
