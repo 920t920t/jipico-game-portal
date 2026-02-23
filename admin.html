@@ -565,8 +565,10 @@
         }
 
         async function deleteCommentAdmin(id) {
-            showDebugLog('削除ボタンが押されました。ID: ' + id);
-            if (!confirm('管理権限でこのコメントを削除しますか？')) {
+            showDebugLog('削除開始 ID: ' + id);
+
+            // 確認ダイアログ（メッセージを短くして確実に反応させる）
+            if (!window.confirm('Delete?')) {
                 showDebugLog('削除がキャンセルされました。');
                 return;
             }
