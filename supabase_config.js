@@ -6,14 +6,18 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
  * 確実にSupabaseクライアントを取得するためのグローバル関数
  */
 function getDbClient() {
-    // CDN版のライブラリは通常 window.supabase に展開されます
-    const sb = window.supabase;
-    if (!sb || !sb.createClient) {
+    // CDN版のライブラリは window.supabase に展開されます
+    const sdk = window.supabase;
+    if (!sdk || typeof sdk.createClient !== 'function') {
+        // すでにクライアントインスタンスに置き換わっているか、ロードされていない場合
+        if (window.sbClient) return window.sbClient;
         console.error("Supabase SDK not loaded properly.");
         return null;
     }
-    return sb.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
-// 互換性のためのグローバルインスタンス
-var supabase = getDbClient();
+// SDK（window.supabase）を上書きしないように別名の変数に格納
+var sbClient = getDbClient();
+// 互換性のため
+var supabase = sbClient;
