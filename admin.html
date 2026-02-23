@@ -262,26 +262,38 @@
 
         async function saveOrder() {
             const msg = document.getElementById('status-msg');
-            msg.textContent = '保存中...';
-            msg.className = 'status success';
             msg.style.display = 'block';
+            msg.textContent = 'データベースに保存中...';
+            msg.className = 'status success';
 
-            let client = (typeof supabase !== 'undefined' && supabase && supabase.from) ? supabase : null;
-            if (!client && typeof getDbClient === 'function') {
-                client = getDbClient();
-            }
+            try {
+                let client = (supabase && supabase.from) ? supabase : getDbClient();
 
-            const { error } = await client
-                .from('settings')
-                .upsert({ key: 'gallery_order', value: currentOrder });
+                if (!client) {
+                    throw new Error('Supabaseクライアントが準備できていません');
+                }
 
-            if (error) {
-                console.error('Save error:', error);
-                alert('エラー発生: ' + error.message);
+                console.log('Saving order:', currentOrder);
+
+                const { data, error } = await client
+                    .from('settings')
+                    .upsert({ key: 'gallery_order', value: currentOrder }, { onConflict: 'key' })
+                    .select();
+
+                if (error) {
+                    console.error('Upsert Error:', error);
+                    alert('保存に失敗しました(DB側エラー):\n' + error.message + '\nコード: ' + error.code);
+                    msg.style.display = 'none';
+                } else {
+                    console.log('Saved successfully:', data);
+                    msg.textContent = '保存完了！トップページをリロードして確認してください。';
+                    // 3秒後にメッセージを隠す
+                    setTimeout(() => { msg.style.display = 'none'; }, 3000);
+                }
+            } catch (err) {
+                console.error('Catch-all error:', err);
+                alert('予期せぬエラーが発生しました:\n' + err.message);
                 msg.style.display = 'none';
-            } else {
-                msg.textContent = '保存完了！トップページに反映されました。';
-                setTimeout(() => msg.style.display = 'none', 3000);
             }
         }
 
