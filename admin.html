@@ -550,14 +550,24 @@
             if (!confirm('管理権限でこのコメントを削除しますか？')) return;
 
             try {
-                let client = (supabase && supabase.from) ? supabase : getDbClient();
+                // 確実にクライアントを取得
+                let client = (typeof supabase !== 'undefined' && supabase && supabase.from) ? supabase : null;
+                if (!client && typeof getDbClient === 'function') {
+                    client = getDbClient();
+                }
+
+                if (!client || !client.from) {
+                    throw new Error('Supabaseクライアントが初期化できていません。ページをリロードしてください。');
+                }
+
                 const { error } = await client.from('comments').delete().eq('id', id);
                 if (error) throw error;
 
                 alert('削除しました');
                 renderCommentsList();
             } catch (err) {
-                alert('削除失敗: ' + err.message);
+                console.error('Delete error:', err);
+                alert('削除失敗: ' + (err.message || '不明なエラーが発生しました'));
             }
         }
     </script>
