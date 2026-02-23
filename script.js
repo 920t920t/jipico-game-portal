@@ -17,10 +17,20 @@ async function initCmsGallery() {
     if (!gridContainer) return;
 
     try {
+        // 確実にクライアントを取得
+        let client = (typeof supabase !== 'undefined' && supabase && supabase.from) ? supabase : null;
+        if (!client && typeof getDbClient === 'function') {
+            client = getDbClient();
+        }
+
+        if (!client || !client.from) {
+            throw new Error('Supabase client is not ready.');
+        }
+
         // 表示順序（settingsテーブル）とゲーム一覧を並行して取得
         const [settingsRes, gamesRes] = await Promise.all([
-            supabase.from('settings').select('value').eq('key', 'gallery_order').single(),
-            supabase.from('games').select('*')
+            client.from('settings').select('value').eq('key', 'gallery_order').maybeSingle(),
+            client.from('games').select('*')
         ]);
 
         if (gamesRes.error) throw gamesRes.error;
