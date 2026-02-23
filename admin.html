@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Jipico CMS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&family=DotGothic16&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase_config.js"></script>
+    <style>
+        :root {
+            --p: #a855f7;
+            --bg: #0a0a0c;
+            --card: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            background: var(--bg);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-family: 'DotGothic16';
+            border-bottom: 2px solid var(--p);
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Auth Overlay */
+        #auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .auth-box {
+            background: var(--card);
+            padding: 3rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid var(--p);
+        }
+
+        input {
+            background: #1a1a1e;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 0.8rem;
+            border-radius: 4px;
+            width: 100%;
+            margin: 1rem 0;
+        }
+
+        button {
+            background: var(--p);
+            border: none;
+            color: #fff;
+            padding: 0.8rem 2rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 700;
+            width: 100%;
+        }
+
+        /* Dashboard */
+        .game-list-item {
+            background: var(--card);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-sm {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            background: #333;
+        }
+
+        .btn-save {
+            background: #14b8a6;
+            margin-top: 2rem;
+        }
+
+        .status {
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .success {
+            display: block;
+            background: rgba(20, 184, 166, 0.2);
+            color: #14b8a6;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="auth-overlay">
+        <div class="auth-box">
+            <h2>ADMIN PORTAL</h2>
+            <input type="password" id="admin-pass" placeholder="Password (default: jipico)">
+            <button onclick="checkAuth()">Login</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1>じぴこの管理画面</h1>
+
+        <section>
+            <h3>表示順序の設定 (GALLERY_ORDER)</h3>
+            <p style="font-size: 0.8rem; color: #888;">上にあるゲームがトップページで大きく表示されます。▲▼で移動。</p>
+            <div id="sortable-list"></div>
+            <button class="btn-save" onclick="saveOrder()">表示順序を保存して反映</button>
+            <div id="status-msg" class="status"></div>
+        </section>
+
+        <section style="margin-top: 4rem;">
+            <h3>ゲーム情報の編集</h3>
+            <p>※詳細編集画面は順次アップデート予定です。</p>
+            <div id="games-edit-list"></div>
+        </section>
+
+        <div style="margin-top: 4rem; opacity: 0.5;">
+            <a href="index.html" style="color: #fff;">← サイトに戻る</a>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_PASS = "jipico";
+        let currentOrder = [];
+        let allGames = {};
+
+        function checkAuth() {
+            const pass = document.getElementById('admin-pass').value;
+            if (pass === DEFAULT_PASS) {
+                document.getElementById('auth-overlay').style.display = 'none';
+                loadData();
+            } else {
+                alert('パスワードが違います');
+            }
+        }
+
+        async function loadData() {
+            const [settingsRes, gamesRes] = await Promise.all([
+                supabase.from('settings').select('value').eq('key', 'gallery_order').single(),
+                supabase.from('games').select('*')
+            ]);
+
+            allGames = gamesRes.data.reduce((acc, g) => { acc[g.id] = g; return acc; }, {});
+            currentOrder = settingsRes.data ? settingsRes.data.value : Object.keys(allGames);
+
+            renderOrderList();
+            renderEditList();
+        }
+
+        function renderOrderList() {
+            const list = document.getElementById('sortable-list');
+            list.innerHTML = '';
+            currentOrder.forEach((id, index) => {
+                const game = allGames[id] || { title: id };
+                const item = document.createElement('div');
+                item.className = 'game-list-item';
+                item.innerHTML = `
+                    <span>${index + 1}. <strong>${game.title}</strong></span>
+                    <div class="controls">
+                        <button class="btn-sm" onclick="move(${index}, -1)">▲</button>
+                        <button class="btn-sm" onclick="move(${index}, 1)">▼</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function move(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= currentOrder.length) return;
+            const temp = currentOrder[index];
+            currentOrder[index] = currentOrder[newIndex];
+            currentOrder[newIndex] = temp;
+            renderOrderList();
+        }
+
+        async function saveOrder() {
+            const msg = document.getElementById('status-msg');
+            msg.textContent = '保存中...';
+            msg.className = 'status success';
+
+            const { error } = await supabase
+                .from('settings')
+                .upsert({ key: 'gallery_order', value: currentOrder });
+
+            if (error) {
+                alert('エラー発生: ' + error.message);
+                msg.style.display = 'none';
+            } else {
+                msg.textContent = '保存完了！トップページに反映されました。';
+                setTimeout(() => msg.style.display = 'none', 3000);
+            }
+        }
+
+        function renderEditList() {
+            const list = document.getElementById('games-edit-list');
+            list.innerHTML = '';
+            Object.values(allGames).forEach(game => {
+                const item = document.createElement('div');
+                item.className = 'game-list-item';
+                item.innerHTML = `
+                    <span>${game.title}</span>
+                    <button class="btn-sm">編集 (Coming Soon)</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+    </script>
+</body>
+
+</html>

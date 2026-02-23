@@ -1,86 +1,79 @@
-// GAMES_DBはgames_db.jsからグローバルに読み込まれます。
+// GAMES_DB設定はDBから取得されるようになりました。
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const gameId = urlParams.get('id');
 
-    const gameData = GAMES_DB[gameId];
-
-    if (!gameData) {
-        document.getElementById('game-title').textContent = 'Game Not Found';
-        document.getElementById('game-description').textContent = '指定されたゲームが見つかりません。URLを直接変更した可能性があります。ホームに戻って再度選択してください。';
+    if (!gameId) {
+        window.location.href = 'index.html';
         return;
     }
 
+    try {
+        // DBからゲーム情報を取得
+        const { data: gameData, error } = await supabase
+            .from('games')
+            .select('*')
+            .eq('id', gameId)
+            .single();
+
+        if (error || !gameData) {
+            document.getElementById('game-title').textContent = 'Game Not Found';
+            document.getElementById('game-description').textContent = '指定されたゲームが見つかりません。';
+            return;
+        }
+
+        renderPlayPage(gameData);
+        initComments(gameId);
+
+    } catch (err) {
+        console.error('Fetch error:', err);
+    }
+});
+
+function renderPlayPage(gameData) {
     // Load Game Info
-    document.title = `${gameData.title} | My Game Portal`;
+    document.title = `${gameData.title} | Jipico's Game Portal`;
     document.getElementById('game-title').textContent = gameData.title;
 
     // アスペクト比とスケールの動的調整
     const wrapper = document.querySelector('.game-wrapper');
     const iframe = document.getElementById('game-iframe');
 
-    // ゲーム描画サイズ（LSGなどは1280x720固定の可能性があるため）
     const gameWidth = gameData.width || 1280;
     const gameHeight = gameData.height || 720;
 
-    if (gameData.aspectRatio) {
-        wrapper.style.aspectRatio = gameData.aspectRatio;
-    } else {
-        wrapper.style.aspectRatio = `${gameWidth} / ${gameHeight}`;
-    }
+    wrapper.style.aspectRatio = gameData.aspect_ratio || `${gameWidth} / ${gameHeight}`;
 
-    // ウィンドウサイズ変更時にiframeをスケールさせて中央にフィットさせる
     function resizeIframe() {
         const wrapperRect = wrapper.getBoundingClientRect();
-        const scale = Math.min(
-            wrapperRect.width / gameWidth,
-            wrapperRect.height / gameHeight
-        );
-
-        // iframe自体のサイズを固定解像度に設定し、CSS transformで縮小・拡大する
+        const scale = Math.min(wrapperRect.width / gameWidth, wrapperRect.height / gameHeight);
         iframe.style.width = `${gameWidth}px`;
         iframe.style.height = `${gameHeight}px`;
         iframe.style.transformOrigin = 'top left';
         iframe.style.transform = `scale(${scale})`;
-
-        // ラッパー内で余白を均等にして中央配置とするため、左上の起点を計算
         const scaledWidth = gameWidth * scale;
-        const scaledHeight = gameHeight * scale;
         const leftOffset = (wrapperRect.width - scaledWidth) / 2;
-        const topOffset = (wrapperRect.height - scaledHeight) / 2;
-
+        const topOffset = (wrapperRect.height - (gameHeight * scale)) / 2;
         iframe.style.position = 'absolute';
         iframe.style.left = `${leftOffset}px`;
         iframe.style.top = `${topOffset}px`;
     }
 
     window.addEventListener('resize', resizeIframe);
-
     iframe.src = gameData.src;
-    iframe.onload = resizeIframe; // ロード完了時にも計算を実行
+    iframe.onload = resizeIframe;
 
     document.getElementById('game-description').innerText = gameData.description;
     document.getElementById('game-controls').innerText = gameData.controls;
     document.getElementById('game-bugs').innerText = gameData.bugs;
 
-    // Load Screenshots
+    // screenshots (DB上は現在無いためフォールバック。JSONB等で拡張可能)
     const gallery = document.getElementById('screenshot-gallery');
-    if (gameData.screenshots && gameData.screenshots.length > 0) {
-        gameData.screenshots.forEach(imgPath => {
-            const imgEl = document.createElement('img');
-            imgEl.src = imgPath;
-            imgEl.className = 'screenshot-img';
-            imgEl.alt = `${gameData.title} screenshot`;
-            gallery.appendChild(imgEl);
-        });
+    if (gameData.screenshots) {
+        // ... (JSONBから読み込むロジック等)
     }
-
-    // Initialize Comments
-    initComments(gameId);
-
-    // Adjust iframe size slightly depending on screen width (optional, basic responsiveness is done in CSS)
-});
+}
 
 function initComments(gameId) {
     // 開発段階のため、まずはlocalStorageを使ってブラウザ保存で実装
