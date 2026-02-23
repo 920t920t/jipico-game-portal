@@ -134,7 +134,11 @@
             <h3>表示順序の設定 (GALLERY_ORDER)</h3>
             <p style="font-size: 0.8rem; color: #888;">上にあるゲームがトップページで大きく表示されます。▲▼で移動。</p>
             <div id="sortable-list"></div>
-            <button class="btn-save" onclick="saveOrder()">表示順序を保存して反映</button>
+            <div style="display:flex; gap:1rem; align-items:center; margin-top:1rem;">
+                <button class="btn-save" onclick="saveOrder()" style="margin-top:0;">表示順序を保存して反映</button>
+                <button class="btn-save" onclick="addEmptyGame()" style="margin-top:0; background:var(--s);">＋
+                    新しいゲームを追加</button>
+            </div>
             <div id="status-msg" class="status"></div>
         </section>
 
@@ -159,6 +163,32 @@
 
             <label>タイトル</label>
             <input type="text" id="edit-title">
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div>
+                    <label>プログラムパス (src)</label>
+                    <input type="text" id="edit-src" placeholder="例: 13_LSG/index.html">
+                </div>
+                <div>
+                    <label>サムネイルパス</label>
+                    <input type="text" id="edit-thumb" placeholder="例: 13_LSG/title.jpg">
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr 1.5fr; gap:0.5rem;">
+                <div>
+                    <label>幅 (width)</label>
+                    <input type="number" id="edit-width" placeholder="1280">
+                </div>
+                <div>
+                    <label>高さ (height)</label>
+                    <input type="number" id="edit-height" placeholder="720">
+                </div>
+                <div>
+                    <label>アスペクト比</label>
+                    <input type="text" id="edit-ratio" placeholder="16 / 9">
+                </div>
+            </div>
 
             <label>説明文 (改行はそのまま反映されます)</label>
             <textarea id="edit-desc"
@@ -370,6 +400,11 @@
             const game = allGames[id];
             document.getElementById('edit-id').value = id;
             document.getElementById('edit-title').value = game.title;
+            document.getElementById('edit-src').value = game.src || '';
+            document.getElementById('edit-thumb').value = game.thumbnail || '';
+            document.getElementById('edit-width').value = game.width || '';
+            document.getElementById('edit-height').value = game.height || '';
+            document.getElementById('edit-ratio').value = game.aspect_ratio || '';
             document.getElementById('edit-desc').value = game.description;
             document.getElementById('edit-controls').value = game.controls;
             document.getElementById('edit-bugs').value = game.bugs;
@@ -385,6 +420,11 @@
             const id = document.getElementById('edit-id').value;
             const updateData = {
                 title: document.getElementById('edit-title').value,
+                src: document.getElementById('edit-src').value,
+                thumbnail: document.getElementById('edit-thumb').value,
+                width: parseInt(document.getElementById('edit-width').value) || null,
+                height: parseInt(document.getElementById('edit-height').value) || null,
+                aspect_ratio: document.getElementById('edit-ratio').value,
                 description: document.getElementById('edit-desc').value,
                 controls: document.getElementById('edit-controls').value,
                 bugs: document.getElementById('edit-bugs').value
@@ -403,6 +443,32 @@
                 alert('保存しました');
             } catch (err) {
                 alert('保存失敗: ' + err.message);
+            }
+        }
+
+        async function addEmptyGame() {
+            const newId = prompt('新しいゲームのIDを入力してください (半角英数、例: mynewgame)');
+            if (!newId) return;
+
+            if (allGames[newId]) {
+                alert('そのIDは既に使用されています');
+                return;
+            }
+
+            try {
+                let client = (supabase && supabase.from) ? supabase : getDbClient();
+                const { error } = await client.from('games').insert({
+                    id: newId,
+                    title: '新しいゲーム',
+                    is_public: false
+                });
+
+                if (error) throw error;
+
+                alert('作成しました！リストの一番下に追加されています。');
+                loadData();
+            } catch (err) {
+                alert('作成失敗: ' + err.message);
             }
         }
     </script>
