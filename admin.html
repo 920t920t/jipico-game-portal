@@ -150,9 +150,18 @@
     </div>
 
     <script>
-        const DEFAULT_PASS = "jipico";
+        const DEFAULT_PASS = "0062920tjipico";
         let currentOrder = [];
         let allGames = {};
+
+        // supabase_config.jsで初期化されるのを待つ
+        function getSupabase() {
+            if (window.supabase && window.supabase.createClient) {
+                // supabase_config.js の設定がまだならここで初期化（保険）
+                return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+            return window.supabase;
+        }
 
         function checkAuth() {
             const pass = document.getElementById('admin-pass').value;
@@ -165,10 +174,22 @@
         }
 
         async function loadData() {
+            const client = supabase || getSupabase();
+            if (!client) {
+                alert('Supabaseの初期化に失敗しています。');
+                return;
+            }
+
             const [settingsRes, gamesRes] = await Promise.all([
-                supabase.from('settings').select('value').eq('key', 'gallery_order').single(),
-                supabase.from('games').select('*')
+                client.from('settings').select('value').eq('key', 'gallery_order').single(),
+                client.from('games').select('*')
             ]);
+
+            if (gamesRes.error) {
+                console.error(gamesRes.error);
+                alert('データの取得に失敗しました：' + gamesRes.error.message + '\n\n※RLS（セキュリティ設定）で許可されていない可能性があります。');
+                return;
+            }
 
             allGames = gamesRes.data.reduce((acc, g) => { acc[g.id] = g; return acc; }, {});
             currentOrder = settingsRes.data ? settingsRes.data.value : Object.keys(allGames);
