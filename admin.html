@@ -174,28 +174,57 @@
         }
 
         async function loadData() {
+            const list = document.getElementById('sortable-list');
+            list.innerHTML = '<p style="text-align:center; padding:1rem; color:#888;">データを読み込み中...</p>';
+
             const client = supabase || getSupabase();
             if (!client) {
-                alert('Supabaseの初期化に失敗しています。');
+                alert('Supabaseの初期化に失敗しています。ブラウザのコンソールを確認してください。');
                 return;
             }
 
-            const [settingsRes, gamesRes] = await Promise.all([
-                client.from('settings').select('value').eq('key', 'gallery_order').single(),
-                client.from('games').select('*')
-            ]);
+            try {
+                // 表示順序（settingsテーブル）とゲーム一覧を並行して取得
+                const [settingsRes, gamesRes] = await Promise.all([
+                    client.from('settings').select('value').eq('key', 'gallery_order').maybeSingle(),
+                    client.from('games').select('*')
+                ]);
 
-            if (gamesRes.error) {
-                console.error(gamesRes.error);
-                alert('データの取得に失敗しました：' + gamesRes.error.message + '\n\n※RLS（セキュリティ設定）で許可されていない可能性があります。');
-                return;
+                if (gamesRes.error) throw gamesRes.error;
+
+                // ゲームデータをIDでマッピング（カラム名が日本語の場合も想定）
+                allGames = (gamesRes.data || []).reduce((acc, g) => {
+                    // 予備：カラム名が「タイトル」など日本語になっている場合も考慮
+                    const gameObj = {
+                        id: g.id,
+                        title: g.title || g.タイトル || g.id,
+                        thumbnail: g.thumbnail || g.サムネイル || ''
+                    };
+                    acc[g.id] = gameObj;
+                    return acc;
+                }, {});
+
+                // 表示順序の設定（DBに無ければテーブル全件表示）
+                const savedOrder = settingsRes.data ? settingsRes.data.value : [];
+                const allIds = Object.keys(allGames);
+
+                // 保存された順序をベースにしつつ、DBにあるものだけを抽出、足りないものを末尾に追加
+                currentOrder = savedOrder.filter(id => allIds.includes(id));
+                allIds.forEach(id => {
+                    if (!currentOrder.includes(id)) currentOrder.push(id);
+                });
+
+                if (currentOrder.length === 0) {
+                    list.innerHTML = '<p style="text-align:center; padding:1rem; color:#f87171;">ゲームが見つかりません。Table Editorでデータが入っているか確認してください。</p>';
+                } else {
+                    renderOrderList();
+                    renderEditList();
+                }
+
+            } catch (err) {
+                console.error('Fetch error:', err);
+                list.innerHTML = '<p style="color:red; padding:1rem;">読み込みエラー：' + (err.message || '通信に失敗しました') + '</p>';
             }
-
-            allGames = gamesRes.data.reduce((acc, g) => { acc[g.id] = g; return acc; }, {});
-            currentOrder = settingsRes.data ? settingsRes.data.value : Object.keys(allGames);
-
-            renderOrderList();
-            renderEditList();
         }
 
         function renderOrderList() {
@@ -206,7 +235,7 @@
                 const item = document.createElement('div');
                 item.className = 'game-list-item';
                 item.innerHTML = `
-                    <span>${index + 1}. <strong>${game.title}</strong></span>
+                    <span>${index + 1}. <strong>${game.title}</strong> <small style="color:#666">(${id})</small></span>
                     <div class="controls">
                         <button class="btn-sm" onclick="move(${index}, -1)">▲</button>
                         <button class="btn-sm" onclick="move(${index}, 1)">▼</button>

@@ -45,14 +45,23 @@ function renderGameGallery(gamesMap, order) {
     const gridContainer = document.getElementById('magazine-grid');
     gridContainer.innerHTML = '';
 
-    if (!order || order.length === 0) {
+    const allIds = Object.keys(gamesMap);
+    // 順序リスト（order）にあるものを優先し、残りを後ろに繋げる
+    const finalOrder = [...new Set([...order.filter(id => allIds.includes(id)), ...allIds])];
+
+    if (finalOrder.length === 0) {
         gridContainer.innerHTML = '<p>表示可能なゲームがありません。</p>';
         return;
     }
 
     // 特集ゲーム
-    const featuredId = order[0];
-    const featuredData = gamesMap[featuredId];
+    const featuredId = finalOrder[0];
+    const featuredRaw = gamesMap[featuredId];
+    const featuredData = {
+        title: featuredRaw.title || featuredRaw.タイトル || featuredId,
+        description: featuredRaw.description || featuredRaw.説明 || '',
+        thumbnail: featuredRaw.thumbnail || featuredRaw.サムネイル || ''
+    };
 
     if (featuredData) {
         gridContainer.innerHTML += `
@@ -73,14 +82,19 @@ function renderGameGallery(gamesMap, order) {
     }
 
     // サイドリスト
-    if (order.length > 1) {
+    if (finalOrder.length > 1) {
         const sideContainer = document.createElement('div');
         sideContainer.className = 'magazine-side';
 
-        for (let i = 1; i < order.length; i++) {
-            const gameId = order[i];
-            const data = gamesMap[gameId];
-            if (!data) continue;
+        for (let i = 1; i < finalOrder.length; i++) {
+            const gameId = finalOrder[i];
+            const raw = gamesMap[gameId];
+            if (!raw) continue;
+
+            const data = {
+                title: raw.title || raw.タイトル || gameId,
+                thumbnail: raw.thumbnail || raw.サムネイル || ''
+            };
 
             sideContainer.innerHTML += `
                 <div class="side-item">
