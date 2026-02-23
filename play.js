@@ -1,4 +1,6 @@
-// GAMES_DB設定はDBから取得されるようになりました。
+/**
+ * play.js - ゲーム詳細ページの制御ロジック
+ */
 
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -25,18 +27,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         renderPlayPage(gameData);
         initComments(gameId);
+        handleViewCount(gameId, gameData.view_count);
 
     } catch (err) {
         console.error('Fetch error:', err);
     }
 });
 
+/**
+ * ゲーム情報の描画
+ */
 function renderPlayPage(gameData) {
-    // Load Game Info
     document.title = `${gameData.title} | Jipico's Game Portal`;
     document.getElementById('game-title').textContent = gameData.title;
 
-    // アスペクト比とスケールの動的調整
     const wrapper = document.querySelector('.game-wrapper');
     const iframe = document.getElementById('game-iframe');
 
@@ -47,86 +51,93 @@ function renderPlayPage(gameData) {
 
     function resizeIframe() {
         const wrapperRect = wrapper.getBoundingClientRect();
-        // マージンを考慮して少し余裕を持たせる（100%だと境界が滲むことがあるため）
         const scale = Math.min(wrapperRect.width / gameWidth, wrapperRect.height / gameHeight);
 
         iframe.style.width = `${gameWidth}px`;
         iframe.style.height = `${gameHeight}px`;
-        iframe.style.transformOrigin = 'center center'; // 中心基準に変更
+        iframe.style.transformOrigin = 'center center';
         iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
-
         iframe.style.position = 'absolute';
         iframe.style.left = `50%`;
         iframe.style.top = `50%`;
-
-        // ドット絵の鮮明さを保つ
         iframe.style.imageRendering = 'pixelated';
         iframe.style.imageRendering = 'crisp-edges';
     }
 
     window.addEventListener('resize', resizeIframe);
 
-    // キャッシュ回避（キャッシュバスター）用パラメータを付与
     const version = gameData.version || Date.now();
     const separator = gameData.src.includes('?') ? '&' : '?';
     iframe.src = `${gameData.src}${separator}v=${version}`;
-
     iframe.onload = resizeIframe;
 
     document.getElementById('game-description').innerText = gameData.description;
     document.getElementById('game-controls').innerText = gameData.controls;
     document.getElementById('game-bugs').innerText = gameData.bugs;
 
-    // screenshots
     const gallery = document.getElementById('screenshot-gallery');
     gallery.innerHTML = '';
-
     if (gameData.screenshots && Array.isArray(gameData.screenshots)) {
         gameData.screenshots.forEach(src => {
             const img = document.createElement('img');
             img.src = src;
             img.className = 'screenshot-img';
-            img.alt = 'Screenshot';
-            // クリックで拡大（簡易実装）
             img.onclick = () => window.open(src, '_blank');
             gallery.appendChild(img);
         });
     }
 }
 
+/**
+ * アクセスカウンターの処理
+ */
+async function handleViewCount(id, initialCount) {
+    const viewCountEl = document.getElementById('view-count');
+    if (!viewCountEl) return;
+
+    let currentCount = initialCount || 0;
+    viewCountEl.textContent = currentCount.toLocaleString();
+
+    const sessionKey = `viewed_${id}`;
+    if (!sessionStorage.getItem(sessionKey)) {
+        try {
+            const client = typeof getDbClient === 'function' ? getDbClient() : supabase;
+            if (client) {
+                const { error } = await client.rpc('increment_view_count', { p_game_id: id });
+                if (!error) {
+                    sessionStorage.setItem(sessionKey, 'true');
+                    const { data } = await client.from('games').select('view_count').eq('id', id).single();
+                    if (data) {
+                        viewCountEl.textContent = data.view_count.toLocaleString();
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('View count error:', err);
+        }
+    }
+}
+
+/**
+ * コメント機能の初期化
+ */
 async function initComments(gameId) {
     const commentsList = document.getElementById('comments-list');
     const submitBtn = document.getElementById('submit-comment');
     const nameInput = document.getElementById('comment-name');
     const textInput = document.getElementById('comment-text');
 
-    // Supabaseクライアントの取得を確実に
-    let client = null;
-    if (typeof getDbClient === 'function') {
-        client = getDbClient();
-    } else if (typeof supabase !== 'undefined') {
-        client = supabase;
-    }
+    let client = typeof getDbClient === 'function' ? getDbClient() : supabase;
+    if (!client) return;
 
-    if (!client) {
-        console.error("Supabase client could not be initialized.");
-        commentsList.innerHTML = '<p style="color:var(--accent-pink); text-align:center;">システムの初期化に失敗しました。</p>';
-        return;
-    }
-
-    // 現在のユーザー情報を取得（ログインしている場合のみ）
     let currentUser = null;
     try {
         const { data: { user } } = await client.auth.getUser();
         currentUser = user;
-
-        // ログインしている場合は名前入力欄をメールアドレスの一部で埋める（任意）
         if (currentUser && !nameInput.value) {
             nameInput.value = currentUser.email.split('@')[0];
         }
-    } catch (e) {
-        console.warn("Auth check failed:", e);
-    }
+    } catch (e) { }
 
     const loadComments = async () => {
         try {
@@ -137,22 +148,18 @@ async function initComments(gameId) {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-
-            // ローカルストレージから自分の投稿したコメントのIDとトークンを取得
             const myTokens = JSON.parse(localStorage.getItem('comment_delete_tokens') || '{}');
 
             commentsList.innerHTML = '';
             if (!comments || comments.length === 0) {
-                commentsList.innerHTML = '<p style="color:#888; text-align:center; padding: 2rem 0;">まだコメントはありません。一番乗りで感想を書こう！</p>';
+                commentsList.innerHTML = '<p style="color:#888; text-align:center; padding: 2rem 0;">まだコメントはありません。</p>';
                 return;
             }
 
             comments.forEach(c => {
                 const el = document.createElement('div');
                 el.className = 'comment-item';
-
                 const isMyComment = myTokens[c.id] !== undefined;
-
                 const dateStr = new Date(c.created_at).toLocaleString('ja-JP');
                 const sanitizedText = (c.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
                 const sanitizedName = (c.nickname || "名無しさん").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -162,185 +169,71 @@ async function initComments(gameId) {
                         <span class="comment-name">${sanitizedName}</span>
                         <div style="display:flex; align-items:center; gap:10px;">
                             <span class="comment-date">${dateStr}</span>
-                            ${isMyComment ? `<button class="delete-comment-btn" data-id="${c.id}" style="background:none; border:none; color:var(--accent-pink); cursor:pointer; font-size:0.7rem; padding:0;">削除</button>` : ''}
+                            ${isMyComment ? `<button class="delete-comment-btn" data-id="${c.id}" style="background:none; border:none; color:var(--accent-pink); cursor:pointer; font-size:0.7rem;">削除</button>` : ''}
                         </div>
                     </div>
                     <div class="comment-body">${sanitizedText}</div>
                 `;
 
-                // 削除ボタンのイベントリスナー
                 if (isMyComment) {
-                    const deleteBtn = el.querySelector('.delete-comment-btn');
-                    deleteBtn.addEventListener('click', () => deleteComment(c.id, myTokens[c.id]));
+                    el.querySelector('.delete-comment-btn').onclick = () => deleteComment(c.id, myTokens[c.id]);
                 }
-
                 commentsList.appendChild(el);
             });
         } catch (err) {
             console.error('Error loading comments:', err);
-            commentsList.innerHTML = '<p style="color:var(--accent-pink); text-align:center;">コメントの読み込みに失敗しました。</p>';
         }
     };
 
     const deleteComment = async (commentId, token) => {
-        if (!confirm('このコメントを削除しますか？')) return;
-
+        if (!confirm('削除しますか？')) return;
         try {
-            // RLSポリシーで x-delete-token ヘッダーをチェックするように設定するため
-            // supabase-jsの標準的な手法では headers を動的に変えるのが難しいため、
-            // ここでは delete_token を条件に含めるシンプルな削除を実行します
-            // (前述のSQLで定義した複雑なポリシーではなく、カラム一致の簡易ポリシーに変更推奨)
-            const { error } = await client
-                .from('comments')
-                .delete()
-                .eq('id', commentId)
-                .eq('delete_token', token);
-
+            const { error } = await client.from('comments').delete().eq('id', commentId).eq('delete_token', token);
             if (error) throw error;
-
-            // ローカルストレージからトークンを削除
             const myTokens = JSON.parse(localStorage.getItem('comment_delete_tokens') || '{}');
             delete myTokens[commentId];
             localStorage.setItem('comment_delete_tokens', JSON.stringify(myTokens));
-
-            alert('コメントを削除しました。');
-            await loadComments();
+            loadComments();
         } catch (err) {
-            console.error('Error deleting comment:', err);
-            alert('削除に失敗しました: ' + err.message);
+            alert('削除失敗: ' + err.message);
         }
     };
 
-    async function initPage() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const gameId = urlParams.get('id');
-
-        if (!gameId) {
-            document.getElementById('game-title').textContent = 'Error';
-            document.getElementById('game-description').textContent = 'ゲームIDが指定されていません。';
-            return;
-        }
-
-        const game = await fetchGameData(gameId);
-        if (game) {
-            renderPlayPage(game);
-            initComments(gameId);
-            handleViewCount(gameId, game.view_count);
-        }
-    }
-
-    async function fetchGameData(gameId) {
-        try {
-            const { data: gameData, error } = await supabase
-                .from('games')
-                .select('*')
-                .eq('id', gameId)
-                .single();
-
-            if (error || !gameData) {
-                document.getElementById('game-title').textContent = 'Game Not Found';
-                document.getElementById('game-description').textContent = '指定されたゲームが見つかりません。';
-                return null;
-            }
-            return gameData;
-        } catch (err) {
-            console.error('Fetch error:', err);
-            return null;
-        }
-    }
-
-    async function handleViewCount(id, initialCount) {
-        const viewCountEl = document.getElementById('view-count');
-        if (!viewCountEl) return;
-
-        // 初期値を表示
-        let currentCount = initialCount || 0;
-        viewCountEl.textContent = currentCount.toLocaleString();
-
-        // セッションごとに1回だけカウントアップ
-        const sessionKey = `viewed_${id}`;
-        if (!sessionStorage.getItem(sessionKey)) {
-            try {
-                const client = typeof getDbClient === 'function' ? getDbClient() : supabase;
-                if (client) {
-                    // RPCを呼び出してカウントアップ
-                    const { error } = await client.rpc('increment_view_count', { p_game_id: id });
-                    if (!error) {
-                        sessionStorage.setItem(sessionKey, 'true');
-                        // カウントアップ後の数値を再取得して表示（+1でも良いが、並列アクセスを考慮して再取得）
-                        const { data } = await client.from('games').select('view_count').eq('id', id).single();
-                        if (data) {
-                            viewCountEl.textContent = data.view_count.toLocaleString();
-                        }
-                    } else {
-                        console.error('Increment error:', error);
-                    }
-                }
-            } catch (err) {
-                console.error('View count error:', err);
-            }
-        }
-    }
-
     const saveComment = async () => {
         const text = textInput.value.trim();
-        if (!text) {
-            alert('コメントを入力してください。');
-            return;
-        }
-
+        if (!text) return;
         const name = nameInput.value.trim() || '名無しさん';
-
-        // 削除用トークンの生成
         const deleteToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
 
         submitBtn.disabled = true;
-        submitBtn.textContent = '送信中...';
-
         try {
-            const { data, error } = await client
-                .from('comments')
-                .insert([
-                    {
-                        game_id: gameId,
-                        user_id: currentUser ? currentUser.id : null,
-                        nickname: name,
-                        content: text,
-                        delete_token: deleteToken
-                    }
-                ])
-                .select();
+            const { data, error } = await client.from('comments').insert([{
+                game_id: gameId,
+                user_id: currentUser ? currentUser.id : null,
+                nickname: name,
+                content: text,
+                delete_token: deleteToken
+            }]).select();
 
             if (error) throw error;
-
-            // 投稿したコメントのIDとトークンを保存
             if (data && data[0]) {
                 const myTokens = JSON.parse(localStorage.getItem('comment_delete_tokens') || '{}');
                 myTokens[data[0].id] = deleteToken;
                 localStorage.setItem('comment_delete_tokens', JSON.stringify(myTokens));
             }
-
-            // 入力欄をクリア
             textInput.value = '';
-            await loadComments();
-
+            loadComments();
         } catch (err) {
-            console.error('Error saving comment:', err);
-            alert('コメントの送信に失敗しました: ' + err.message);
+            alert('送信失敗');
         } finally {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'コメントを送信';
         }
     };
 
-    submitBtn.addEventListener('click', saveComment);
-
-    // Ctrl+Enter or Cmd+Enter to submit
-    textInput.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            saveComment();
-        }
-    });
+    submitBtn.onclick = saveComment;
+    textInput.onkeydown = (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') saveComment();
+    };
 
     loadComments();
 }

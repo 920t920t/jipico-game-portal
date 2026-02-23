@@ -1,7 +1,8 @@
 .play-container {
     max-width: 1340px;
     margin: 0 auto;
-    padding: 2rem 1rem;
+    padding: 7rem 1rem 2rem;
+    /* 固定ヘッダー分（約5rem）と余白を追加 */
 }
 
 #game-title {
