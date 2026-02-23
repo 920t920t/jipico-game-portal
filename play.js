@@ -47,17 +47,21 @@ function renderPlayPage(gameData) {
 
     function resizeIframe() {
         const wrapperRect = wrapper.getBoundingClientRect();
+        // マージンを考慮して少し余裕を持たせる（100%だと境界が滲むことがあるため）
         const scale = Math.min(wrapperRect.width / gameWidth, wrapperRect.height / gameHeight);
+
         iframe.style.width = `${gameWidth}px`;
         iframe.style.height = `${gameHeight}px`;
-        iframe.style.transformOrigin = 'top left';
-        iframe.style.transform = `scale(${scale})`;
-        const scaledWidth = gameWidth * scale;
-        const leftOffset = (wrapperRect.width - scaledWidth) / 2;
-        const topOffset = (wrapperRect.height - (gameHeight * scale)) / 2;
+        iframe.style.transformOrigin = 'center center'; // 中心基準に変更
+        iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+
         iframe.style.position = 'absolute';
-        iframe.style.left = `${leftOffset}px`;
-        iframe.style.top = `${topOffset}px`;
+        iframe.style.left = `50%`;
+        iframe.style.top = `50%`;
+
+        // ドット絵の鮮明さを保つ
+        iframe.style.imageRendering = 'pixelated';
+        iframe.style.imageRendering = 'crisp-edges';
     }
 
     window.addEventListener('resize', resizeIframe);
