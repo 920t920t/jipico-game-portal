@@ -4,69 +4,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Game Portal</title>
-    <meta name="description" content="自作のHTMLゲームをまとめたポータルサイト">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <title>じぴこのゲームポータル | Jipico's Game Portal</title>
+    <meta name="description" content="インディーゲームの熱量と独自の世界観。じぴこが贈るネオレトロ・ゲームの世界。">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Outfit:wght@400;700;900&family=Zen+Maru+Gothic:wght@400;700;900&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <div class="background-animation"></div>
+    <div class="ambient-light"></div>
+    <div class="background-texture"></div>
+
     <header>
-        <div class="logo">じぴこの<span class="highlight">ゲームポータル</span></div>
+        <div class="logo">じぴこのゲームポータル</div>
         <nav>
-            <button class="login-btn">ログイン / ランキング (実装予定)</button>
+            <button class="login-btn">ログイン (準備中)</button>
         </nav>
     </header>
 
     <main>
         <section class="hero">
+            <div class="hero-visual"></div>
             <div class="hero-content">
-                <h1>最高の<span class="highlight">ゲーム体験</span>を</h1>
-                <p>遊んで、競って、楽しもう</p>
+                <span class="title-jp">世界を変える、インディーズ。</span>
+                <h1>Jipico's<br>Game<br>Portal</h1>
+                <p>
+                    AIが描く未来、人間が刻む情熱。<br>
+                    ここには、境界線を越えた新しい遊びが待っている。
+                </p>
+                <div class="hero-actions">
+                    <a href="#new-games" class="btn-main">Portal Open</a>
+                </div>
             </div>
         </section>
 
-        <section class="game-gallery">
-            <h2 class="section-title">最新のゲーム</h2>
-            <div class="grid">
-                <!-- Game Card 1: LSG -->
-                <a href="play.html?id=lsg" class="game-card">
-                    <div class="game-image"
-                        style="background-image: url('13_LSG/title.jpg'); background-size: cover; background-position: center;">
-                    </div>
-                    <div class="game-info">
-                        <h3>告白デスマーチ 修学旅行編</h3>
-                        <p>4人の女子との恋愛シミュレーションゲーム。</p>
-                        <span class="play-btn">今すぐプレイ</span>
-                    </div>
-                </a>
+        <section id="new-games" class="showcase">
+            <div class="section-header">
+                <h2>NEW GAMES</h2>
+                <span class="jp-sub">最新のインディーズ作品</span>
+            </div>
 
-                <!-- Game Card 2: Spelunker -->
-                <a href="play.html?id=spelunker" class="game-card">
-                    <div class="game-image"
-                        style="background-image: url('16_spelunker/title.jpg'); background-size: cover; background-position: center;">
-                    </div>
-                    <div class="game-info">
-                        <h3>Cave Explorer</h3>
-                        <p>深い洞窟を探検し、お化けを避けてお宝を集めよう。</p>
-                        <span class="play-btn">今すぐプレイ</span>
-                    </div>
-                </a>
+            <div class="game-magazine-grid">
+                <!-- Featured Game: Cave Explorer -->
+                <div class="magazine-feature">
+                    <a href="play.html?id=spelunker" class="feature-link">
+                        <div class="feature-img"
+                            style="background-image: url('16_spelunker/title.jpg'); background-size: cover; background-position: center;">
+                            <div class="img-overlay"></div>
+                        </div>
+                        <div class="feature-info">
+                            <span class="tag">FEATURED</span>
+                            <h3>Cave Explorer</h3>
+                            <p>究極の洞窟探検アクション。光と闇が交錯する地下世界で、伝説の財宝を追い求めろ。</p>
+                            <span class="action-text">PLAY NOW →</span>
+                        </div>
+                    </a>
+                </div>
 
-                <!-- Game Card 3: Rising Fist -->
-                <a href="play.html?id=risingfist" class="game-card">
-                    <div class="game-image"
-                        style="background-image: url('14_risingfist/title.jpg'); background-size: cover; background-position: center;">
+                <!-- Side Games -->
+                <div class="magazine-side">
+                    <div class="side-item">
+                        <a href="play.html?id=lsg" class="side-link">
+                            <div class="side-img"
+                                style="background-image: url('13_LSG/title.jpg'); background-size: cover; background-position: center;">
+                            </div>
+                            <div class="side-info">
+                                <h3>告白デスマーチ <br>修学旅行編</h3>
+                                <span class="action-text">PLAY →</span>
+                            </div>
+                        </a>
                     </div>
-                    <div class="game-info">
-                        <h3>ライジングフィスト</h3>
-                        <p>迫り来る敵を倒す爽快アクションゲーム。</p>
-                        <span class="play-btn">今すぐプレイ</span>
-                    </div>
-                </a>
 
-                <!-- Placeholder Card removed as we now have 3 games to fill the grid nicely -->
+                    <div class="side-item">
+                        <a href="play.html?id=risingfist" class="side-link">
+                            <div class="side-img"
+                                style="background-image: url('14_risingfist/title.jpg'); background-size: cover; background-position: center;">
+                            </div>
+                            <div class="side-info">
+                                <h3>ライジングフィスト</h3>
+                                <span class="action-text">PLAY →</span>
+                            </div>
+                        </a>
+                    </div>
+
+                    <div class="side-more">
+                        <p>More Coming Soon...</p>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -109,6 +136,10 @@
             </div>
         </section>
     </main>
+
+    <footer class="site-footer">
+        <p>&copy; 2026 Jipico's Game Portal. Built with Passion.</p>
+    </footer>
 
     <script src="script.js"></script>
 </body>
