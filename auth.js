@@ -66,9 +66,9 @@ function toggleAuthMode() {
         submitBtn.textContent = "アカウント作成";
         switchLink.textContent = "ログイン";
     } else {
-        title.textContent = "ログイン";
+        title.textContent = "ログイン(実装予定)";
         desc.textContent = "アカウントにログインしてデータを同期しよう";
-        submitBtn.textContent = "ログイン";
+        submitBtn.textContent = "ログイン(実装予定)";
         switchLink.textContent = "新規登録";
     }
 }
@@ -162,7 +162,7 @@ function setLoading(loading) {
         btn.style.opacity = "0.7";
     } else {
         btn.disabled = false;
-        btn.textContent = isSignUp ? "アカウント作成" : "ログイン";
+        btn.textContent = isSignUp ? "アカウント作成" : "ログイン(実装予定)";
         btn.style.opacity = "1";
     }
 }

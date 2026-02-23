@@ -21,7 +21,7 @@
             <div class="logo" style="margin:0;">じぴこの<span class="highlight">ゲームポータル</span></div>
         </div>
         <nav>
-            <button id="auth-btn" class="login-btn">ログイン</button>
+            <button id="auth-btn" class="login-btn">ログイン(実装予定)</button>
             <div id="user-profile" style="display:none; align-items:center; gap:10px;">
                 <span id="user-display-name" style="font-size:0.9rem; color:var(--secondary);"></span>
                 <button id="logout-btn" class="login-btn" style="padding:0.4rem 1rem; font-size:0.8rem;">ログアウト</button>
@@ -34,7 +34,7 @@
         <div class="auth-card">
             <button class="modal-close" id="close-auth">&times;</button>
             <div id="auth-form-container">
-                <h2 id="auth-modal-title">ログイン</h2>
+                <h2 id="auth-modal-title">ログイン(実装予定)</h2>
                 <p id="auth-modal-desc">アカウントにログインしてデータを同期しよう</p>
                 <div class="auth-inputs">
                     <div class="input-group">
@@ -49,14 +49,19 @@
                 <div id="auth-error-msg"
                     style="color:var(--accent-pink); font-size:0.8rem; margin-bottom:1rem; display:none;"></div>
                 <button id="auth-submit-btn" class="btn-main"
-                    style="width:100%; padding:1rem; margin-bottom:1.5rem;">ログイン</button>
+                    style="width:100%; padding:1rem; margin-bottom:1.5rem;">ログイン(実装予定)</button>
                 <p class="auth-switch">まだアカウントをお持ちでないですか？ <a href="#" id="switch-to-signup">新規登録</a></p>
             </div>
         </div>
     </div>
 
     <main class="play-container">
-        <h1 id="game-title">Loading...</h1>
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:1rem;">
+            <h1 id="game-title" style="margin:0;">Loading...</h1>
+            <div id="view-count-area" style="font-size:0.9rem; color:#888; font-family:'Outfit', sans-serif;">
+                これまで <span id="view-count" style="color:var(--secondary); font-weight:700;">--</span> 人がアクセスしました
+            </div>
+        </div>
 
         <div class="game-wrapper">
             <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>

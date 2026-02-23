@@ -211,6 +211,77 @@ async function initComments(gameId) {
         }
     };
 
+    async function initPage() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameId = urlParams.get('id');
+
+        if (!gameId) {
+            document.getElementById('game-title').textContent = 'Error';
+            document.getElementById('game-description').textContent = 'ゲームIDが指定されていません。';
+            return;
+        }
+
+        const game = await fetchGameData(gameId);
+        if (game) {
+            renderPlayPage(game);
+            initComments(gameId);
+            handleViewCount(gameId, game.view_count);
+        }
+    }
+
+    async function fetchGameData(gameId) {
+        try {
+            const { data: gameData, error } = await supabase
+                .from('games')
+                .select('*')
+                .eq('id', gameId)
+                .single();
+
+            if (error || !gameData) {
+                document.getElementById('game-title').textContent = 'Game Not Found';
+                document.getElementById('game-description').textContent = '指定されたゲームが見つかりません。';
+                return null;
+            }
+            return gameData;
+        } catch (err) {
+            console.error('Fetch error:', err);
+            return null;
+        }
+    }
+
+    async function handleViewCount(id, initialCount) {
+        const viewCountEl = document.getElementById('view-count');
+        if (!viewCountEl) return;
+
+        // 初期値を表示
+        let currentCount = initialCount || 0;
+        viewCountEl.textContent = currentCount.toLocaleString();
+
+        // セッションごとに1回だけカウントアップ
+        const sessionKey = `viewed_${id}`;
+        if (!sessionStorage.getItem(sessionKey)) {
+            try {
+                const client = typeof getDbClient === 'function' ? getDbClient() : supabase;
+                if (client) {
+                    // RPCを呼び出してカウントアップ
+                    const { error } = await client.rpc('increment_view_count', { p_game_id: id });
+                    if (!error) {
+                        sessionStorage.setItem(sessionKey, 'true');
+                        // カウントアップ後の数値を再取得して表示（+1でも良いが、並列アクセスを考慮して再取得）
+                        const { data } = await client.from('games').select('view_count').eq('id', id).single();
+                        if (data) {
+                            viewCountEl.textContent = data.view_count.toLocaleString();
+                        }
+                    } else {
+                        console.error('Increment error:', error);
+                    }
+                }
+            } catch (err) {
+                console.error('View count error:', err);
+            }
+        }
+    }
+
     const saveComment = async () => {
         const text = textInput.value.trim();
         if (!text) {
