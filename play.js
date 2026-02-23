@@ -100,10 +100,23 @@ async function initComments(gameId) {
     const nameInput = document.getElementById('comment-name');
     const textInput = document.getElementById('comment-text');
 
+    // Supabaseクライアントの取得を確実に
+    let client = null;
+    if (typeof getDbClient === 'function') {
+        client = getDbClient();
+    } else if (typeof supabase !== 'undefined') {
+        client = supabase;
+    }
+
+    if (!client) {
+        console.error("Supabase client could not be initialized.");
+        commentsList.innerHTML = '<p style="color:var(--accent-pink); text-align:center;">システムの初期化に失敗しました。</p>';
+        return;
+    }
+
     // 現在のユーザー情報を取得（ログインしている場合のみ）
     let currentUser = null;
-    const client = typeof getDbClient === 'function' ? getDbClient() : supabase;
-    if (client) {
+    try {
         const { data: { user } } = await client.auth.getUser();
         currentUser = user;
 
@@ -111,6 +124,8 @@ async function initComments(gameId) {
         if (currentUser && !nameInput.value) {
             nameInput.value = currentUser.email.split('@')[0];
         }
+    } catch (e) {
+        console.warn("Auth check failed:", e);
     }
 
     const loadComments = async () => {
