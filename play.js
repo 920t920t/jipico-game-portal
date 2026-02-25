@@ -3,6 +3,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('%c[DEBUG] play.js loaded', 'color: white; background: blue; padding: 2px 5px;');
     const urlParams = new URLSearchParams(window.location.search);
     const gameId = urlParams.get('id');
 
@@ -21,9 +22,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (error || !gameData) {
             document.getElementById('game-title').textContent = 'Game Not Found';
-            document.getElementById('game-description').textContent = '指定されたゲームが見つかりません。';
+            document.getElementById('game-description').textContent = '指定されたゲームが見つかりません。DBのIDを確認してください。';
             return;
         }
+
+        console.log('[DEBUG] Current Page URL:', window.location.href);
+        console.log('[DEBUG] Game ID from URL:', gameId);
+        console.log('[DEBUG] Fetched Game Data (Detailed):', JSON.parse(JSON.stringify(gameData)));
 
         renderPlayPage(gameData);
         initComments(gameId);
@@ -69,6 +74,8 @@ function renderPlayPage(gameData) {
     const version = gameData.version || Date.now();
     const separator = gameData.src.includes('?') ? '&' : '?';
     iframe.src = `${gameData.src}${separator}v=${version}`;
+    console.log('[DEBUG] Setting iframe src to:', iframe.src);
+    console.log('[DEBUG] iframe.src absolute path:', iframe.src);
     iframe.onload = resizeIframe;
 
     document.getElementById('game-description').innerText = gameData.description;
