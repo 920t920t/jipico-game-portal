@@ -32,5 +32,17 @@ const GAMES_DB = {
         width: 960,
         height: 540,
         screenshots: ['14_risingfist/screenshot1.jpg', '14_risingfist/screenshot2.jpg', '14_risingfist/screenshot3.jpg']
+    },
+    'makaimura': {
+        title: "Knight's Ordeal",
+        src: '18_makaimura/index.html',
+        thumbnail: '18_makaimura/サムネ.png',
+        description: '超魔界村に着想を得た高難度横スクロールアクション。\nジャンプと槍攻撃を駆使して、墓場ステージの先へ進もう。',
+        controls: '【移動】\n矢印キー / A D W S\n【ジャンプ】\nSpace / Z\n【攻撃】\nX / Shift\n【ポーズ】\nEsc / Enter',
+        bugs: 'BGMや一部演出はブラウザや端末によって再生タイミングが変わる場合があります。',
+        aspectRatio: '16 / 9',
+        width: 960,
+        height: 540,
+        screenshots: ['18_makaimura/1.jpg', '18_makaimura/2.jpg', '18_makaimura/3.webp']
     }
 };
